@@ -18,9 +18,6 @@
   a { color: #e94560; text-decoration: none; }
   a:hover { text-decoration: underline; }
   .back { font-size: 0.82rem; margin-bottom: 16px; display: inline-block; }
-  .diagram { background: #1a1a1a; border: 1px solid #333; padding: 12px; font-family: monospace;
-             font-size: 0.8rem; line-height: 1.4; color: #ccc; margin-bottom: 14px; white-space: pre; }
-  .highlight { color: #e94560; }
   .opt-label { display: inline-block; background: #e94560; color: #111; font-size: 0.7rem;
                font-weight: 600; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
 </style>
@@ -37,17 +34,6 @@
   The goal is to divide the entire grid into non-overlapping rectangles such that each rectangle
   contains <strong>exactly one clue</strong>, and that clue's value equals the rectangle's <strong>area</strong>.
 </p>
-
-<div class="diagram">┌───────┬───┐
-│ <span class="highlight">6</span>     │   │
-│       │ <span class="highlight">4</span> │
-├───┬───┤   │
-│   │ <span class="highlight">5</span> │   │
-│<span class="highlight">4</span> │   ├───┤
-│   │   │<span class="highlight">6</span> │
-├───┴───┤   │
-│       │   │
-└───────┴───┘</div>
 
 <p>
   Shikaku is NP-complete in general, meaning there's no known polynomial-time algorithm that
@@ -129,14 +115,19 @@
   compared to a static ordering.
 </p>
 
-<div class="diagram">Static MRV:  pick order fixed at start
-  Clue A (3 options) → Clue B (5 options) → Clue C (2 options)
-                                              ↑ too late!
-
-Dynamic MRV: re-evaluate at each step
-  Step 1: Clue C (2 options) ← most constrained
-  Step 2: Clue A (1 option)  ← after placing C, A is forced
-  Step 3: Clue B (3 options) ← easy</div>
+<p>
+  <strong>Static MRV</strong> fixes the pick order at the start. A clue that becomes
+  heavily constrained mid-search may not be tried until much later, wasting effort on
+  doomed branches.
+</p>
+<p>
+  <strong>Dynamic MRV</strong> re-evaluates at each step:
+</p>
+<ol>
+  <li>Clue C (2 options) &mdash; most constrained, try first</li>
+  <li>Clue A (1 option) &mdash; after placing C, A is forced</li>
+  <li>Clue B (3 options) &mdash; least constrained, easy to resolve last</li>
+</ol>
 
 <h2>Step 5: Forward Checking</h2>
 <p>
@@ -162,14 +153,11 @@ Dynamic MRV: re-evaluate at each step
   compared to the branches it prunes.
 </p>
 
-<div class="diagram">After placing a rectangle:
-
-  ┌───────┬───┐
-  │ placed│ ? │     Clue at ? has 0 valid rects left
-  │       │   │     → <span class="highlight">backtrack immediately</span>
-  ├───────┤   │
-  │ . . . │   │     Cell . is unreachable by any remaining clue
-  └───────┴───┘     → <span class="highlight">backtrack immediately</span></div>
+<p>
+  For example, after placing a rectangle: if a nearby clue has zero valid rectangles left,
+  or if an uncovered cell can no longer be reached by any remaining clue &mdash; we
+  backtrack immediately instead of exploring deeper.
+</p>
 
 <h2>Step 6: Async Chunking</h2>
 <p>
