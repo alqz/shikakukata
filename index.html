@@ -30,7 +30,7 @@
 
 <div id="grid-container">
   <div id="grid" role="grid" aria-label="Shikaku puzzle grid"></div>
-  <div id="selection-overlay"></div>
+  <div id="selection-overlay"><span id="selection-area"></span></div>
 </div>
 
 <div class="instructions">
@@ -101,6 +101,7 @@ const statusEl = document.getElementById('status');
 const timerEl = document.getElementById('timer');
 const sizeLabel = document.getElementById('size-label');
 const selectionOverlay = document.getElementById('selection-overlay');
+const selectionArea = document.getElementById('selection-area');
 
 // ─── Rendering ─────────────────────────────────────────────────────
 
@@ -234,6 +235,9 @@ function updateSelectionHighlight() {
   selectionOverlay.style.width = w + 'px';
   selectionOverlay.style.height = h + 'px';
   selectionOverlay.style.display = 'block';
+
+  const area = (r2 - r1 + 1) * (c2 - c1 + 1);
+  selectionArea.textContent = area;
 }
 
 function checkWin() {
