@@ -842,12 +842,14 @@ function parseCustomGrid(text) {
 
   const rows = [];
   for (const line of lines) {
-    const nums = line.split(/[\s,]+/).map(Number);
+    const nums = line.split(/[\s,]+/).filter(s => s.length > 0).map(Number);
+    if (nums.length === 0) continue;
     if (nums.some(isNaN)) return { error: `Invalid number in row: "${line}"` };
     if (nums.some(n => n < 0)) return { error: 'Negative numbers are not allowed.' };
     rows.push(nums);
   }
 
+  if (rows.length === 0) return { error: 'No input provided.' };
   const cols = rows[0].length;
   if (cols === 0) return { error: 'Empty row.' };
   if (cols > 25 || rows.length > 25) return { error: 'Maximum size is 25x25.' };
@@ -861,7 +863,7 @@ function parseCustomGrid(text) {
   const clueSum = rows.reduce((s, row) => s + row.reduce((a, b) => a + b, 0), 0);
   const area = rows.length * cols;
   if (clueSum !== area) {
-    return { error: `Clue sum (${clueSum}) must equal grid area (${area}).` };
+    return { error: `Clue sum (${clueSum}) must equal grid area (${area} = ${rows.length}\u00d7${cols}).` };
   }
 
   return { grid: rows };
@@ -1195,6 +1197,13 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
 
   const r4 = parseCustomGrid('1 a\n0 0');
   assert(r4.error, 'parser: reject non-numbers');
+
+  // Test: trailing commas/spaces should not add ghost columns
+  const r5 = parseCustomGrid('4, 0,\n0, 0,');
+  assert(r5.grid && r5.grid[0].length === 2, 'parser: trailing comma ignored');
+
+  const r6 = parseCustomGrid('4 0 \n0 0 ');
+  assert(r6.grid && r6.grid[0].length === 2, 'parser: trailing space ignored');
 
   // ── Diagnostics tests ──
 
