@@ -4,22 +4,50 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shikakukata — How the Solver Works</title>
-<link rel="stylesheet" href="style.css">
 <style>
-  body { max-width: 640px; text-align: left; padding: 24px 20px; }
-  h1 { margin-bottom: 6px; }
-  h2 { font-size: 1.1rem; font-weight: 500; color: #e94560; margin: 28px 0 8px; }
-  h3 { font-size: 0.95rem; font-weight: 500; color: #ccc; margin: 18px 0 6px; }
-  p, li { font-size: 0.85rem; color: #999; line-height: 1.6; margin-bottom: 10px; }
-  ul, ol { padding-left: 20px; margin-bottom: 12px; }
-  code { background: #1a1a1a; color: #f7dc6f; padding: 1px 5px; font-size: 0.82rem; }
-  pre { background: #1a1a1a; border: 1px solid #333; padding: 12px; overflow-x: auto;
-        font-size: 0.8rem; color: #ccc; line-height: 1.5; margin-bottom: 14px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #111;
+    color: #d4d4d4;
+    line-height: 1.7;
+    padding: 48px 24px 80px;
+    max-width: 780px;
+    margin: 0 auto;
+    user-select: text;
+  }
   a { color: #e94560; text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .back { font-size: 0.82rem; margin-bottom: 16px; display: inline-block; }
-  .opt-label { display: inline-block; background: #e94560; color: #111; font-size: 0.7rem;
-               font-weight: 600; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
+  .back { font-size: 0.85rem; display: inline-block; margin-bottom: 32px; color: #888; }
+  .back:hover { color: #e94560; }
+  h1 { font-size: 1.8rem; font-weight: 600; color: #e94560; margin-bottom: 4px; letter-spacing: 1px; }
+  .subtitle { font-size: 0.95rem; color: #666; margin-bottom: 40px; }
+  h2 { font-size: 1.2rem; font-weight: 600; color: #eee; margin: 40px 0 12px; }
+  h3 { font-size: 1rem; font-weight: 500; color: #bbb; margin: 24px 0 8px; }
+  p { font-size: 0.92rem; margin-bottom: 14px; }
+  ul, ol { padding-left: 24px; margin-bottom: 16px; }
+  li { font-size: 0.92rem; margin-bottom: 6px; }
+  code {
+    background: #1e1e1e;
+    color: #f7dc6f;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.85rem;
+  }
+  pre {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    color: #ccc;
+    line-height: 1.6;
+    margin-bottom: 18px;
+  }
+  strong { color: #eee; font-weight: 600; }
+  em { color: #ccc; }
+  .footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid #222; }
 </style>
 </head>
 <body>
@@ -34,7 +62,6 @@
   The goal is to divide the entire grid into non-overlapping rectangles such that each rectangle
   contains <strong>exactly one clue</strong>, and that clue's value equals the rectangle's <strong>area</strong>.
 </p>
-
 <p>
   Shikaku is NP-complete in general, meaning there's no known polynomial-time algorithm that
   solves all instances. Our solver uses backtracking search with several optimizations that make
@@ -68,13 +95,12 @@
 
 <h2>Step 2: Pre-filtering</h2>
 <p>
-  <span class="opt-label">OPT</span>
   Before the search begins, we remove candidate rectangles that <strong>contain another clue</strong>.
   Since each rectangle must contain exactly one clue, any rectangle overlapping a second clue is
   immediately invalid. This is done once upfront, saving many checks during backtracking.
 </p>
 <p>
-  For a 15&times;15 grid, this typically eliminates 30&ndash;60% of candidates.
+  The amount filtered depends on clue density &mdash; denser grids see more candidates eliminated.
 </p>
 
 <h2>Step 3: Backtracking Search</h2>
@@ -98,7 +124,6 @@
 
 <h2>Step 4: Dynamic MRV Ordering</h2>
 <p>
-  <span class="opt-label">OPT</span>
   The order in which we pick clues to place matters enormously. We use the
   <strong>Minimum Remaining Values (MRV)</strong> heuristic: at each step, pick the unplaced
   clue with the <em>fewest</em> valid (non-overlapping) rectangles remaining.
@@ -131,7 +156,6 @@
 
 <h2>Step 5: Forward Checking</h2>
 <p>
-  <span class="opt-label">OPT</span>
   After each placement, before recursing deeper, we check whether a solution is still possible.
   Forward checking verifies two things:
 </p>
@@ -153,15 +177,8 @@
   compared to the branches it prunes.
 </p>
 
-<p>
-  For example, after placing a rectangle: if a nearby clue has zero valid rectangles left,
-  or if an uncovered cell can no longer be reached by any remaining clue &mdash; we
-  backtrack immediately instead of exploring deeper.
-</p>
-
 <h2>Step 6: Async Chunking</h2>
 <p>
-  <span class="opt-label">OPT</span>
   For the interactive solver (the "Solve" button), the algorithm runs asynchronously using
   <strong>chunked execution</strong>. The backtracker uses an explicit stack instead of the
   call stack, and after every 5,000 iterations, yields control back to the browser via
@@ -207,9 +224,9 @@
   and in a few seconds for larger grids.
 </p>
 
-<p style="margin-top: 32px;">
+<div class="footer">
   <a href="index.html">&larr; Back to game</a>
-</p>
+</div>
 
 </body>
 </html>

@@ -740,6 +740,47 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
   // Test 7b: Truly unsolvable — clue 3 in a 2x2 can't form a 1x3 or 3x1
   assert(solveShikaku([[3,0],[0,1]]) === null, 'unsolvable: should return null');
 
+  // ── Non-square grids ──
+  const ns1 = solveShikaku([[3,0,0]]);
+  assert(ns1 !== null, '1x3: solvable');
+  if (ns1) assert(validateSolution([[3,0,0]], ns1) === null, '1x3: valid');
+
+  const ns2 = solveShikaku([[3],[0],[0]]);
+  assert(ns2 !== null, '3x1: solvable');
+  if (ns2) assert(validateSolution([[3],[0],[0]], ns2) === null, '3x1: valid');
+
+  const ns3 = solveShikaku([[2,0,0],[0,0,4]]);
+  assert(ns3 !== null, '2x3: solvable');
+  if (ns3) assert(validateSolution([[2,0,0],[0,0,4]], ns3) === null, '2x3: valid');
+
+  // ── All-1s grid (every cell is a clue) ──
+  const all1 = [[1,1,1],[1,1,1],[1,1,1]];
+  const s_all1 = solveShikaku(all1);
+  assert(s_all1 !== null, 'all-1s 3x3: solvable');
+  if (s_all1) assert(validateSolution(all1, s_all1) === null, 'all-1s 3x3: valid');
+  if (s_all1) assert(s_all1.length === 9, 'all-1s 3x3: 9 rects');
+
+  // ── Single clue covering entire grid ──
+  const big = [[0,0,0,0],[0,0,0,0],[0,0,0,12]];
+  const s_big = solveShikaku(big);
+  assert(s_big !== null, 'single-clue 3x4: solvable');
+  if (s_big) assert(validateSolution(big, s_big) === null, 'single-clue 3x4: valid');
+  if (s_big) assert(s_big.length === 1, 'single-clue 3x4: 1 rect');
+
+  // ── Multiple solutions (solver finds any valid one) ──
+  const multi = [[8,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,8]];
+  const s_multi = solveShikaku(multi);
+  assert(s_multi !== null, 'multi-solution 4x4: finds one');
+  if (s_multi) assert(validateSolution(multi, s_multi) === null, 'multi-solution 4x4: valid');
+
+  // ── getRectangles correctness ──
+  assert(getRectangles(0, 0, 1, 1, 1).length === 1, 'getRects: 1x1');
+  assert(getRectangles(0, 0, 2, 2, 2).length === 2, 'getRects: clue 2 at corner of 2x2');
+  assert(getRectangles(0, 0, 4, 2, 2).length === 1, 'getRects: clue 4 at corner of 2x2');
+  assert(getRectangles(0, 0, 7, 10, 10).length === 2, 'getRects: prime 7 at corner');
+  // Center has more positions than corner for same area
+  assert(getRectangles(2, 2, 4, 5, 5).length > getRectangles(0, 0, 4, 5, 5).length, 'getRects: center > corner');
+
   // Test 8: Generator produces valid grids with correct clue sums
   for (const sz of [3, 4, 5, 6, 7, 8, 10, 15]) {
     for (let t = 0; t < 3; t++) {
