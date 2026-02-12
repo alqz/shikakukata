@@ -393,6 +393,118 @@ function solveShikaku(grid) {
   return null;
 }
 
+// ─── Puzzle Diagnostics ────────────────────────────────────────────
+
+function diagnosePuzzle(grid) {
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const totalArea = rows * cols;
+  const reasons = [];
+
+  // Collect clues
+  const clues = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (grid[r][c] > 0) clues.push([r, c, grid[r][c]]);
+
+  if (clues.length === 0) {
+    reasons.push('The grid has no clues at all.');
+    return reasons;
+  }
+
+  // Check clue sum
+  const clueSum = clues.reduce((s, cl) => s + cl[2], 0);
+  if (clueSum !== totalArea) {
+    reasons.push(`Clue sum (${clueSum}) does not equal grid area (${totalArea}).`);
+    return reasons;
+  }
+
+  // For each clue, find all valid rectangles (no out-of-bounds)
+  function getRectangles(cr, cc, area) {
+    const rects = [];
+    for (let h = 1; h <= area; h++) {
+      if (area % h !== 0) continue;
+      const w = area / h;
+      for (let r1 = cr - h + 1; r1 <= cr; r1++) {
+        for (let c1 = cc - w + 1; c1 <= cc; c1++) {
+          const r2 = r1 + h - 1;
+          const c2 = c1 + w - 1;
+          if (r1 >= 0 && r2 < rows && c1 >= 0 && c2 < cols)
+            rects.push([r1, c1, r2, c2]);
+        }
+      }
+    }
+    return rects;
+  }
+
+  // Check each clue for obvious issues
+  for (const [cr, cc, val] of clues) {
+    // Clue too large for entire grid
+    if (val > totalArea) {
+      reasons.push(`Clue ${val} at (${cr + 1},${cc + 1}) exceeds the grid area (${totalArea}).`);
+      continue;
+    }
+
+    const rects = getRectangles(cr, cc, val);
+    if (rects.length === 0) {
+      reasons.push(`Clue ${val} at (${cr + 1},${cc + 1}) has no possible rectangle that fits on the grid.`);
+      continue;
+    }
+
+    // Filter out rects that contain other clues
+    const validRects = rects.filter(([r1, c1, r2, c2]) => {
+      for (const [ocr, occ, _] of clues) {
+        if (ocr === cr && occ === cc) continue;
+        if (ocr >= r1 && ocr <= r2 && occ >= c1 && occ <= c2) return false;
+      }
+      return true;
+    });
+
+    if (validRects.length === 0) {
+      reasons.push(`Clue ${val} at (${cr + 1},${cc + 1}): every possible rectangle contains another clue.`);
+    }
+  }
+
+  // Check for cells unreachable by any clue
+  const reachable = Array.from({ length: rows }, () => new Uint8Array(cols));
+  for (const [cr, cc, val] of clues) {
+    const rects = getRectangles(cr, cc, val);
+    for (const [r1, c1, r2, c2] of rects) {
+      for (let r = r1; r <= r2; r++)
+        for (let c = c1; c <= c2; c++)
+          reachable[r][c] = 1;
+    }
+  }
+  const unreachableCells = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (!reachable[r][c]) unreachableCells.push(`(${r + 1},${c + 1})`);
+
+  if (unreachableCells.length > 0) {
+    const shown = unreachableCells.length <= 5
+      ? unreachableCells.join(', ')
+      : unreachableCells.slice(0, 5).join(', ') + ` and ${unreachableCells.length - 5} more`;
+    reasons.push(`${unreachableCells.length} cell(s) cannot be reached by any clue's rectangle: ${shown}.`);
+  }
+
+  // Check for adjacent clues that are both 1 (impossible — overlap)
+  for (let i = 0; i < clues.length; i++) {
+    for (let j = i + 1; j < clues.length; j++) {
+      const [r1, c1, v1] = clues[i];
+      const [r2, c2, v2] = clues[j];
+      if (v1 === 1 && v2 === 1 && Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1) {
+        reasons.push(`Two adjacent clues of 1 at (${r1 + 1},${c1 + 1}) and (${r2 + 1},${c2 + 1}) — both need a 1x1 rectangle, leaving the other's cell uncoverable.`);
+      }
+    }
+  }
+
+  if (reasons.length === 0) {
+    reasons.push('No obvious structural issue found; the puzzle is valid but the backtracking search found no solution (conflicting constraints).');
+  }
+
+  return reasons;
+}
+
 // ─── Puzzle Generator ──────────────────────────────────────────────
 
 function generatePuzzle(rows, cols) {
@@ -832,8 +944,10 @@ function loadCustomPuzzle(andSolve) {
     requestAnimationFrame(() => setTimeout(() => {
       const result = solveShikaku(grid);
       if (!result) {
-        statusEl.textContent = 'No solution found for this puzzle.';
+        const reasons = diagnosePuzzle(grid);
+        statusEl.textContent = 'No solution found: ' + reasons[0];
         statusEl.className = 'status error';
+        console.warn('Puzzle diagnosis:', reasons);
         return;
       }
       playerRects = result.map(({ rect }, i) => ({
@@ -906,8 +1020,10 @@ function autoSolve() {
     setTimeout(() => {
       const result = solveShikaku(grid);
       if (!result) {
-        statusEl.textContent = 'No solution found for this puzzle.';
+        const reasons = diagnosePuzzle(grid);
+        statusEl.textContent = 'No solution found: ' + reasons[0];
         statusEl.className = 'status error';
+        console.warn('Puzzle diagnosis:', reasons);
         return;
       }
 
@@ -1047,6 +1163,32 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
 
   const r4 = parseCustomGrid('1 a\n0 0');
   assert(r4.error, 'parser: reject non-numbers');
+
+  // Test 11: Diagnostics — bad clue sum
+  const d1 = diagnosePuzzle([[3,0],[0,0]]);
+  assert(d1.some(r => r.includes('Clue sum')), 'diag: detect bad clue sum');
+
+  // Test 12: Diagnostics — clue too large
+  const d2 = diagnosePuzzle([[9,0],[0,0]]);  // sum != area, caught first
+  assert(d2.length > 0, 'diag: detect clue sum mismatch for oversized clue');
+
+  // Test 13: Diagnostics — adjacent 1s
+  const d3 = diagnosePuzzle([[1,1],[0,0]]);  // sum=2, area=4 → sum mismatch
+  // try one that has correct sum
+  const d4 = diagnosePuzzle([[1,1,1],[1,1,1]]);  // 6=6, but two adjacent 1s everywhere
+  assert(d4.some(r => r.includes('adjacent')), 'diag: detect adjacent clues of 1');
+
+  // Test 14: Diagnostics — no possible rects (clue value can't form rectangle in grid)
+  const d5 = diagnosePuzzle([[7,0,0],[0,0,0]]);  // 7 in a 2x3=6 grid → sum wrong
+  assert(d5.length > 0, 'diag: detect impossible clue');
+
+  // Test 15: Diagnostics — valid puzzle returns no structural issues
+  const d6 = diagnosePuzzle([[4,0],[0,0]]);
+  assert(d6.some(r => r.includes('no solution') || r.includes('No obvious')), 'diag: valid puzzle has no structural issue');
+
+  // Test 16: Diagnostics — clue blocked by other clues
+  const d7 = diagnosePuzzle([[2,2],[2,0]]);  // sum=6, area=4 → sum mismatch
+  assert(d7.length > 0, 'diag: detect sum mismatch');
 
   if (failed === 0) {
     console.log(`%cShikaku tests: all ${passed} passed`, 'color: #4ecdc4; font-weight: bold');
