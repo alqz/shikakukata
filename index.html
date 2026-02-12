@@ -18,6 +18,7 @@
     <button id="btn-larger" aria-label="Increase grid size">+</button>
   </div>
   <button id="btn-new">New Puzzle</button>
+  <button id="btn-no1s" title="Generate puzzles with no 1-clues">No 1s</button>
   <button id="btn-custom">Custom</button>
   <button id="btn-edit">Edit Grid</button>
   <button id="btn-undo">Undo</button>
@@ -94,6 +95,9 @@ let solved = false;
 let editMode = false;
 let solving = false;
 let activeEditInput = null;
+let dragMoved = false;
+let nextColorIdx = 0;
+let noOnesMode = false;
 
 const gridEl = document.getElementById('grid');
 const gridContainer = document.getElementById('grid-container');
@@ -234,10 +238,20 @@ function updateSelectionHighlight() {
   selectionOverlay.style.top = y + 'px';
   selectionOverlay.style.width = w + 'px';
   selectionOverlay.style.height = h + 'px';
+  const color = COLORS[nextColorIdx % COLORS.length];
+  selectionOverlay.style.borderColor = color;
+  selectionOverlay.style.background = color + '18';
   selectionOverlay.style.display = 'block';
 
   const area = (r2 - r1 + 1) * (c2 - c1 + 1);
   selectionArea.textContent = area;
+
+  // Position label at the cursor corner of the selection
+  selectionArea.style.color = color;
+  selectionArea.style.top = dragEnd.r >= dragStart.r ? '' : '4px';
+  selectionArea.style.bottom = dragEnd.r >= dragStart.r ? '4px' : '';
+  selectionArea.style.left = dragEnd.c <= dragStart.c ? '6px' : '';
+  selectionArea.style.right = dragEnd.c <= dragStart.c ? '' : '6px';
 }
 
 function checkWin() {
@@ -264,6 +278,7 @@ function checkWin() {
   clearInterval(timerInterval);
   statusEl.textContent = 'Solved! Well done!';
   statusEl.className = 'status win';
+  updateButtons();
 }
 
 // ─── Input Handling ────────────────────────────────────────────────
@@ -286,6 +301,7 @@ function onPointerDown(e) {
   isDragging = true;
   dragStart = cell;
   dragEnd = cell;
+  dragMoved = false;
 
   if (!timerStart) {
     timerStart = Date.now();
@@ -300,6 +316,7 @@ function onPointerMove(e) {
   e.preventDefault();
   const cell = getCellFromEvent(e);
   if (cell) {
+    if (cell.r !== dragStart.r || cell.c !== dragStart.c) dragMoved = true;
     dragEnd = cell;
     updateSelectionHighlight();
   }
@@ -319,8 +336,8 @@ function onPointerUp(e) {
   const c1 = Math.min(dragStart.c, dragEnd.c);
   const c2 = Math.max(dragStart.c, dragEnd.c);
 
-  // Single cell click: remove any rect covering that cell
-  if (r1 === r2 && c1 === c2) {
+  // Single cell: remove rect if one exists, otherwise create 1x1 rect
+  if (r1 === r2 && c1 === c2 && !dragMoved) {
     for (let i = playerRects.length - 1; i >= 0; i--) {
       const o = playerRects[i];
       if (r1 >= o.r1 && r1 <= o.r2 && c1 >= o.c1 && c1 <= o.c2) {
@@ -332,8 +349,7 @@ function onPointerUp(e) {
         return;
       }
     }
-    updateSelectionHighlight();
-    return;
+    // No rect here — fall through to create a 1x1 rect
   }
 
   // Remove any overlapping rects
@@ -342,7 +358,8 @@ function onPointerUp(e) {
     return !(r1 <= o.r2 && r2 >= o.r1 && c1 <= o.c2 && c2 >= o.c1);
   });
 
-  const color = COLORS[playerRects.length % COLORS.length];
+  const color = COLORS[nextColorIdx % COLORS.length];
+  nextColorIdx++;
   playerRects.push({ r1, c1, r2, c2, color });
 
   renderOverlays();
@@ -379,6 +396,7 @@ function updateStatus() {
     statusEl.textContent = `${playerRects.length} rectangles drawn. ${coveredCount}/${totalCells} cells covered.`;
     statusEl.className = 'status';
   }
+  updateButtons();
 }
 
 function updateTimer() {
@@ -421,6 +439,7 @@ function loadCustomPuzzle(andSolve) {
   sizeLabel.textContent = `${grid[0].length}\u00d7${grid.length}`;
   playerRects = [];
   undoStack = [];
+  nextColorIdx = 0;
   solved = false;
   timerStart = null;
   clearInterval(timerInterval);
@@ -473,6 +492,11 @@ modalOverlay.addEventListener('click', (e) => {
 // ─── Controls ──────────────────────────────────────────────────────
 
 document.getElementById('btn-new').addEventListener('click', newPuzzle);
+document.getElementById('btn-no1s').addEventListener('click', () => {
+  noOnesMode = !noOnesMode;
+  document.getElementById('btn-no1s').classList.toggle('active', noOnesMode);
+  newPuzzle();
+});
 document.getElementById('btn-edit').addEventListener('click', toggleEditMode);
 document.getElementById('btn-undo').addEventListener('click', undo);
 document.getElementById('btn-clear').addEventListener('click', clearRects);
@@ -480,10 +504,19 @@ document.getElementById('btn-solve').addEventListener('click', autoSolve);
 document.getElementById('btn-smaller').addEventListener('click', () => changeSize(-1));
 document.getElementById('btn-larger').addEventListener('click', () => changeSize(1));
 
+function updateButtons() {
+  document.getElementById('btn-undo').disabled = undoStack.length === 0 || solved || solving;
+  document.getElementById('btn-clear').disabled = playerRects.length === 0 || solved || solving;
+  document.getElementById('btn-solve').disabled = solving || solved;
+  document.getElementById('btn-edit').disabled = solving;
+}
+
 function newPuzzle() {
-  grid = generatePuzzle(gridSize, gridSize);
+  const opts = noOnesMode ? { minArea: 2 } : undefined;
+  grid = generatePuzzle(gridSize, gridSize, opts);
   playerRects = [];
   undoStack = [];
+  nextColorIdx = 0;
   solved = false;
   timerStart = null;
   clearInterval(timerInterval);
@@ -491,6 +524,7 @@ function newPuzzle() {
   statusEl.textContent = 'Drag to draw rectangles. Each must contain exactly one number equal to its area.';
   statusEl.className = 'status';
   renderGrid();
+  updateButtons();
 }
 
 function undo() {
@@ -511,6 +545,7 @@ function clearRects() {
 async function autoSolve() {
   if (solving) return;
   solving = true;
+  updateButtons();
   const solveStart = Date.now();
   statusEl.textContent = 'Solving...';
   statusEl.className = 'status';
@@ -526,6 +561,7 @@ async function autoSolve() {
 
   clearInterval(animInterval);
   solving = false;
+  updateButtons();
   const elapsed = ((Date.now() - solveStart) / 1000).toFixed(1);
 
   if (!result) {
@@ -568,6 +604,7 @@ function toggleEditMode() {
     btn.classList.add('active');
     playerRects = [];
     undoStack = [];
+    nextColorIdx = 0;
     solved = false;
     timerStart = null;
     clearInterval(timerInterval);
@@ -805,6 +842,36 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
       if (sol) {
         const err = validateSolution(g, sol);
         assert(err === null, `gen ${sz}x${sz} trial ${t}: ${err}`);
+      }
+    }
+  }
+
+  // ── No-1s generator ──
+  for (const sz of [3, 4, 5, 6, 7, 8, 10]) {
+    for (let t = 0; t < 3; t++) {
+      const g = generatePuzzle(sz, sz, { minArea: 2 });
+      assert(g.length === sz && g[0].length === sz, `no1s gen ${sz}x${sz}: wrong dimensions`);
+      let sum = 0;
+      let hasOne = false;
+      for (let r = 0; r < sz; r++)
+        for (let c = 0; c < sz; c++) {
+          sum += g[r][c];
+          if (g[r][c] === 1) hasOne = true;
+        }
+      assert(sum === sz * sz, `no1s gen ${sz}x${sz} trial ${t}: clue sum ${sum} != ${sz * sz}`);
+      assert(!hasOne, `no1s gen ${sz}x${sz} trial ${t}: should have no 1-clues`);
+    }
+  }
+
+  // No-1s generated puzzles are solvable
+  for (const sz of [3, 4, 5, 6, 7]) {
+    for (let t = 0; t < 3; t++) {
+      const g = generatePuzzle(sz, sz, { minArea: 2 });
+      const sol = solveShikaku(g);
+      assert(sol !== null, `no1s gen ${sz}x${sz} trial ${t}: should be solvable`);
+      if (sol) {
+        const err = validateSolution(g, sol);
+        assert(err === null, `no1s gen ${sz}x${sz} trial ${t}: ${err}`);
       }
     }
   }

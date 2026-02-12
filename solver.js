@@ -478,17 +478,23 @@ function diagnosePuzzle(grid) {
 
 // ─── Puzzle Generator ──────────────────────────────────────────────
 
-function generatePuzzle(rows, cols) {
+function generatePuzzle(rows, cols, options) {
+  const minArea = (options && options.minArea) || 1;
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const result = generatePuzzleAttempt(rows, cols, minArea);
+    if (result) return result;
+  }
+  // Fallback: generate without constraint
+  return generatePuzzleAttempt(rows, cols, 1);
+}
+
+function generatePuzzleAttempt(rows, cols, minArea) {
   const grid = Array.from({ length: rows }, () => new Array(cols).fill(0));
   const used = Array.from({ length: rows }, () => new Uint8Array(cols));
   const rects = [];
-
-  function findFirstEmpty() {
-    for (let r = 0; r < rows; r++)
-      for (let c = 0; c < cols; c++)
-        if (!used[r][c]) return [r, c];
-    return null;
-  }
+  const maxDim = Math.min(8, Math.max(rows, cols));
+  const maxRectArea = Math.min(rows * cols, rows + cols);
 
   function canPlace(r1, c1, r2, c2) {
     if (r2 >= rows || c2 >= cols) return false;
@@ -498,45 +504,85 @@ function generatePuzzle(rows, cols) {
     return true;
   }
 
-  function markUsed(r1, c1, r2, c2) {
+  // Check whether placing a rect would isolate any adjacent cell
+  // (an isolated cell = empty cell whose only possible rects are 1x1)
+  function wouldIsolate(r1, c1, r2, c2) {
+    if (minArea <= 1) return false;
+    // Temporarily mark used
     for (let r = r1; r <= r2; r++)
       for (let c = c1; c <= c2; c++)
         used[r][c] = 1;
+    // Check border cells around the placed rect
+    let isolated = false;
+    for (let r = r1 - 1; r <= r2 + 1 && !isolated; r++) {
+      for (let c = c1 - 1; c <= c2 + 1 && !isolated; c++) {
+        if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+        if (used[r][c]) continue;
+        // Check if this empty cell can be part of any rect >= minArea
+        let canReach = false;
+        // Quick check: does it have at least one empty neighbor?
+        // If it has an empty neighbor, a 1x2 or 2x1 rect can cover both
+        const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+        for (const [dr, dc] of dirs) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !used[nr][nc]) {
+            canReach = true;
+            break;
+          }
+        }
+        if (!canReach) isolated = true;
+      }
+    }
+    // Undo
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        used[r][c] = 0;
+    return isolated;
   }
 
-  const maxDim = Math.min(8, Math.max(rows, cols));
-
   while (true) {
-    const cell = findFirstEmpty();
-    if (!cell) break;
-    const [r, c] = cell;
+    // Find first empty cell
+    let emptyR = -1, emptyC = -1;
+    for (let r = 0; r < rows && emptyR < 0; r++)
+      for (let c = 0; c < cols && emptyR < 0; c++)
+        if (!used[r][c]) { emptyR = r; emptyC = c; }
+    if (emptyR < 0) break;
 
+    const r = emptyR, c = emptyC;
     const candidates = [];
     for (let h = 1; h <= Math.min(rows - r, maxDim); h++) {
       for (let w = 1; w <= Math.min(cols - c, maxDim); w++) {
         const area = h * w;
-        if (area > 0 && area <= Math.min(rows * cols, rows + cols) && canPlace(r, c, r + h - 1, c + w - 1)) {
+        if (area >= minArea && area <= maxRectArea && canPlace(r, c, r + h - 1, c + w - 1)) {
           candidates.push([r, c, r + h - 1, c + w - 1]);
         }
       }
     }
 
     if (candidates.length === 0) {
-      if (!used[r][c]) {
-        used[r][c] = 1;
-        rects.push([r, c, r, c]);
-      }
+      // Stuck — no valid rect for this cell
+      if (minArea > 1) return null; // retry
+      used[r][c] = 1;
+      rects.push([r, c, r, c]);
       continue;
     }
 
     shuffle(candidates);
-    const weighted = candidates.filter(([r1, c1, r2, c2]) => {
+
+    // Filter out candidates that would isolate a neighbor
+    const safe = candidates.filter(([r1, c1, r2, c2]) => !wouldIsolate(r1, c1, r2, c2));
+    const pool = safe.length > 0 ? safe : candidates;
+
+    // Prefer medium-sized rects
+    const weighted = pool.filter(([r1, c1, r2, c2]) => {
       const a = (r2 - r1 + 1) * (c2 - c1 + 1);
-      return a >= 2 && a <= Math.max(6, Math.floor(rows * cols / 4));
+      return a >= Math.max(2, minArea) && a <= Math.max(6, Math.floor(rows * cols / 4));
     });
 
-    const chosen = (weighted.length > 0 ? weighted : candidates)[0];
-    markUsed(...chosen);
+    const chosen = (weighted.length > 0 ? weighted : pool)[0];
+    for (let cr = chosen[0]; cr <= chosen[2]; cr++)
+      for (let cc = chosen[1]; cc <= chosen[3]; cc++)
+        used[cr][cc] = 1;
     rects.push(chosen);
   }
 

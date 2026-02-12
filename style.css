@@ -24,6 +24,8 @@ h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 2px; color: #e94560; }
 button { background: #222; color: #ccc; border: 1px solid #444; padding: 6px 14px; cursor: pointer; font-size: 0.85rem; }
 button:hover { background: #333; }
 button.active { border-color: #e94560; color: #e94560; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:disabled:hover { background: #222; }
 
 .size-controls { display: flex; gap: 4px; align-items: center; }
 .size-controls span { font-size: 0.85rem; color: #777; min-width: 40px; text-align: center; }
@@ -55,19 +57,17 @@ button.active { border-color: #e94560; color: #e94560; }
 
 #selection-overlay {
   position: absolute;
-  background: rgba(233, 69, 96, 0.2);
   pointer-events: none;
   z-index: 5;
   display: none;
+  border: 2px solid;
 }
 
 #selection-area {
   position: absolute;
-  bottom: 4px;
-  right: 6px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: rgba(233, 69, 96, 0.8);
+  opacity: 0.85;
 }
 
 .cell-input {
