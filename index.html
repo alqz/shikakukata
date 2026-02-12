@@ -14,8 +14,8 @@
     --text: #e0e0e0;
     --text-dim: #8888aa;
     --accent: #e94560;
-    --accent2: #0f3460;
     --cell-size: 52px;
+    --cell-font: 1.1rem;
     --grid-gap: 1px;
   }
 
@@ -77,7 +77,7 @@
   .size-controls span {
     font-size: 0.85rem;
     color: var(--text-dim);
-    min-width: 30px;
+    min-width: 42px;
     text-align: center;
   }
 
@@ -112,7 +112,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.1rem;
+    font-size: var(--cell-font);
     font-weight: 600;
     position: relative;
     cursor: crosshair;
@@ -121,13 +121,15 @@
 
   .cell.clue { color: #fff; }
   .cell.empty { color: transparent; }
+  .cell.selecting { background: rgba(233, 69, 96, 0.25); }
 
-  /* Selection highlight */
-  .cell.selecting {
-    background: rgba(233, 69, 96, 0.25);
+  /* Edit mode: cells are clickable inputs */
+  .cell.editable {
+    cursor: pointer;
+    color: #f7dc6f;
   }
+  .cell.editable:hover { background: rgba(247, 220, 111, 0.15); }
 
-  /* Rectangle overlays */
   .rect-overlay {
     position: absolute;
     border: 2.5px solid;
@@ -143,7 +145,7 @@
   }
 
   .instructions {
-    max-width: 480px;
+    max-width: 520px;
     text-align: center;
     font-size: 0.82rem;
     color: var(--text-dim);
@@ -160,8 +162,72 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Custom puzzle modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.visible { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    max-width: 500px;
+    width: 90%;
+  }
+
+  .modal h2 {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+
+  .modal p {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
+  .modal textarea {
+    width: 100%;
+    height: 160px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    margin-bottom: 12px;
+  }
+
+  .modal textarea:focus { outline: 1px solid var(--accent); }
+
+  .modal .modal-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .modal .error-msg {
+    color: var(--accent);
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+    min-height: 1.2em;
+  }
+
   @media (max-width: 500px) {
-    :root { --cell-size: 40px; }
+    :root { --cell-size: 40px; --cell-font: 0.9rem; }
     h1 { font-size: 1.4rem; }
   }
 </style>
@@ -173,11 +239,12 @@
 
 <div class="controls">
   <div class="size-controls">
-    <button id="btn-smaller">−</button>
-    <span id="size-label">5×5</span>
+    <button id="btn-smaller">&minus;</button>
+    <span id="size-label">5&times;5</span>
     <button id="btn-larger">+</button>
   </div>
   <button id="btn-new">New Puzzle</button>
+  <button id="btn-custom">Custom</button>
   <button id="btn-undo">Undo</button>
   <button id="btn-clear">Clear</button>
   <button id="btn-solve">Solve</button>
@@ -194,11 +261,34 @@
   <strong>How to play:</strong> Click and drag to draw a rectangle.
   Each rectangle must contain exactly <strong>one number</strong>,
   and that number must equal the rectangle's <strong>area</strong>.
-  Cover every cell to win.
+  Cover every cell to win. Use <strong>Custom</strong> to enter your own puzzle.
+</div>
+
+<!-- Custom puzzle modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h2>Enter Custom Puzzle</h2>
+    <p>
+      Enter numbers separated by spaces, one row per line.
+      Use <strong>0</strong> for empty cells. All rows must have the same length,
+      and the clue values must sum to the total grid area.
+    </p>
+    <textarea id="custom-input" spellcheck="false" placeholder="0 6 0 0 4
+0 0 0 0 0
+0 0 5 0 0
+4 0 0 0 0
+0 0 0 6 0"></textarea>
+    <div class="error-msg" id="custom-error"></div>
+    <div class="modal-buttons">
+      <button id="btn-custom-cancel">Cancel</button>
+      <button id="btn-custom-load">Load &amp; Solve</button>
+      <button id="btn-custom-play">Load &amp; Play</button>
+    </div>
+  </div>
 </div>
 
 <script>
-// ─── Shikaku Solver (ported from Python) ───────────────────────────
+// ─── Shikaku Solver ────────────────────────────────────────────────
 
 function solveShikaku(grid) {
   const rows = grid.length;
@@ -294,7 +384,6 @@ function solveShikaku(grid) {
   }
 
   if (backtrack(0)) {
-    // Map solution back to original clue order
     const result = [];
     for (let i = 0; i < sortedClues.length; i++) {
       result.push({ clue: sortedClues[i], rect: solution[i] });
@@ -307,13 +396,10 @@ function solveShikaku(grid) {
 // ─── Puzzle Generator ──────────────────────────────────────────────
 
 function generatePuzzle(rows, cols) {
-  // Generate a random partition of the grid into rectangles, then place clues
   const grid = Array.from({ length: rows }, () => new Array(cols).fill(0));
   const used = Array.from({ length: rows }, () => new Uint8Array(cols));
-
   const rects = [];
 
-  // Randomly partition the grid
   function findFirstEmpty() {
     for (let r = 0; r < rows; r++)
       for (let c = 0; c < cols; c++)
@@ -335,17 +421,18 @@ function generatePuzzle(rows, cols) {
         used[r][c] = 1;
   }
 
+  const maxDim = Math.min(8, Math.max(rows, cols));
+
   while (true) {
     const cell = findFirstEmpty();
     if (!cell) break;
     const [r, c] = cell;
 
-    // Try random rectangle sizes
     const maxArea = Math.min(rows * cols - rects.reduce((s, rc) => s + (rc[2] - rc[0] + 1) * (rc[3] - rc[1] + 1), 0), rows * cols);
     const candidates = [];
 
-    for (let h = 1; h <= Math.min(rows - r, 6); h++) {
-      for (let w = 1; w <= Math.min(cols - c, 6); w++) {
+    for (let h = 1; h <= Math.min(rows - r, maxDim); h++) {
+      for (let w = 1; w <= Math.min(cols - c, maxDim); w++) {
         const area = h * w;
         if (area > 0 && area <= Math.min(maxArea, rows + cols) && canPlace(r, c, r + h - 1, c + w - 1)) {
           candidates.push([r, c, r + h - 1, c + w - 1]);
@@ -354,7 +441,6 @@ function generatePuzzle(rows, cols) {
     }
 
     if (candidates.length === 0) {
-      // Fallback: single cell
       if (!used[r][c]) {
         used[r][c] = 1;
         rects.push([r, c, r, c]);
@@ -362,9 +448,7 @@ function generatePuzzle(rows, cols) {
       continue;
     }
 
-    // Prefer medium-sized rectangles for more interesting puzzles
     candidates.sort(() => Math.random() - 0.5);
-    // Bias toward areas 2-6 for more interesting puzzles
     const weighted = candidates.filter(([r1, c1, r2, c2]) => {
       const a = (r2 - r1 + 1) * (c2 - c1 + 1);
       return a >= 2 && a <= Math.max(6, Math.floor(rows * cols / 4));
@@ -375,7 +459,6 @@ function generatePuzzle(rows, cols) {
     rects.push(chosen);
   }
 
-  // Place clue numbers: one random cell per rectangle gets the area value
   for (const [r1, c1, r2, c2] of rects) {
     const area = (r2 - r1 + 1) * (c2 - c1 + 1);
     const cells = [];
@@ -401,7 +484,7 @@ const COLORS = [
 
 let gridSize = 5;
 let grid = [];
-let playerRects = []; // [{r1,c1,r2,c2,color}]
+let playerRects = [];
 let undoStack = [];
 let dragStart = null;
 let dragEnd = null;
@@ -416,11 +499,31 @@ const statusEl = document.getElementById('status');
 const timerEl = document.getElementById('timer');
 const sizeLabel = document.getElementById('size-label');
 
+// ─── Adaptive Cell Sizing ──────────────────────────────────────────
+
+function updateCellSize(size) {
+  let cellPx, fontRem;
+  if (size <= 7) { cellPx = 52; fontRem = 1.1; }
+  else if (size <= 10) { cellPx = 42; fontRem = 1.0; }
+  else if (size <= 15) { cellPx = 32; fontRem = 0.85; }
+  else if (size <= 20) { cellPx = 26; fontRem = 0.75; }
+  else { cellPx = 22; fontRem = 0.65; }
+
+  // Also constrain to viewport width
+  const maxWidth = Math.floor((window.innerWidth - 40) / size) - 1;
+  cellPx = Math.min(cellPx, Math.max(16, maxWidth));
+
+  document.documentElement.style.setProperty('--cell-size', cellPx + 'px');
+  document.documentElement.style.setProperty('--cell-font', fontRem + 'rem');
+}
+
 // ─── Rendering ─────────────────────────────────────────────────────
 
 function renderGrid() {
   const rows = grid.length;
   const cols = grid[0].length;
+
+  updateCellSize(Math.max(rows, cols));
 
   gridEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell-size))`;
   gridEl.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
@@ -441,12 +544,11 @@ function renderGrid() {
 }
 
 function renderOverlays() {
-  // Remove old overlays
   gridContainer.querySelectorAll('.rect-overlay').forEach(el => el.remove());
 
   const cellSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size'));
-  const gap = 1; // grid gap
-  const border = 2; // grid border
+  const gap = 1;
+  const border = 2;
 
   for (let i = 0; i < playerRects.length; i++) {
     const { r1, c1, r2, c2, color } = playerRects[i];
@@ -465,7 +567,6 @@ function renderOverlays() {
     overlay.style.borderColor = color;
     overlay.style.background = color + '18';
 
-    // Check validity
     const valid = isRectValid(r1, c1, r2, c2, i);
     if (!valid) overlay.classList.add('invalid');
 
@@ -487,10 +588,8 @@ function isRectValid(r1, c1, r2, c2, selfIdx) {
     }
   }
 
-  // Must contain exactly one clue, and area must match
   if (clueCount !== 1 || clueVal !== area) return false;
 
-  // Check overlap with other rectangles
   for (let i = 0; i < playerRects.length; i++) {
     if (i === selfIdx) continue;
     const o = playerRects[i];
@@ -527,7 +626,6 @@ function checkWin() {
   const cols = grid[0].length;
   const covered = Array.from({ length: rows }, () => new Uint8Array(cols));
 
-  // All rects must be valid and cover everything
   for (let i = 0; i < playerRects.length; i++) {
     const { r1, c1, r2, c2 } = playerRects[i];
     if (!isRectValid(r1, c1, r2, c2, i)) return;
@@ -541,7 +639,6 @@ function checkWin() {
     for (let c = 0; c < cols; c++)
       if (!covered[r][c]) return;
 
-  // Win!
   solved = true;
   clearInterval(timerInterval);
   statusEl.textContent = 'Solved! Well done!';
@@ -564,16 +661,6 @@ function onPointerDown(e) {
   e.preventDefault();
   const cell = getCellFromEvent(e);
   if (!cell) return;
-
-  // If clicking on an existing rect, remove it
-  for (let i = playerRects.length - 1; i >= 0; i--) {
-    const { r1, c1, r2, c2 } = playerRects[i];
-    if (cell.r >= r1 && cell.r <= r2 && cell.c >= c1 && cell.c <= c2) {
-      // Check if this is just a click (not a drag) - we'll handle removal on pointerup
-      // For now start dragging
-      break;
-    }
-  }
 
   isDragging = true;
   dragStart = cell;
@@ -616,7 +703,7 @@ function onPointerUp(e) {
     for (let i = playerRects.length - 1; i >= 0; i--) {
       const o = playerRects[i];
       if (r1 >= o.r1 && r1 <= o.r2 && c1 >= o.c1 && c1 <= o.c2) {
-        undoStack.push([...playerRects]);
+        undoStack.push([...playerRects.map(r => ({ ...r }))]);
         playerRects.splice(i, 1);
         renderOverlays();
         updateStatus();
@@ -657,7 +744,9 @@ function updateStatus() {
         if (!covered[r][c]) { covered[r][c] = 1; coveredCount++; }
   }
 
-  const invalidCount = playerRects.filter((_, i) => !isRectValid(playerRects[i].r1, playerRects[i].c1, playerRects[i].r2, playerRects[i].c2, i)).length;
+  const invalidCount = playerRects.filter((_, i) =>
+    !isRectValid(playerRects[i].r1, playerRects[i].c1, playerRects[i].r2, playerRects[i].c2, i)
+  ).length;
 
   if (playerRects.length === 0) {
     statusEl.textContent = 'Drag to draw rectangles. Each must contain exactly one number equal to its area.';
@@ -678,6 +767,99 @@ function updateTimer() {
   const s = elapsed % 60;
   timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
 }
+
+// ─── Custom Puzzle ─────────────────────────────────────────────────
+
+const modalOverlay = document.getElementById('modal-overlay');
+const customInput = document.getElementById('custom-input');
+const customError = document.getElementById('custom-error');
+
+function parseCustomGrid(text) {
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length === 0) return { error: 'No input provided.' };
+
+  const rows = [];
+  for (const line of lines) {
+    const nums = line.split(/[\s,]+/).map(Number);
+    if (nums.some(isNaN)) return { error: `Invalid number in row: "${line}"` };
+    if (nums.some(n => n < 0)) return { error: 'Negative numbers are not allowed.' };
+    rows.push(nums);
+  }
+
+  const cols = rows[0].length;
+  if (cols === 0) return { error: 'Empty row.' };
+  if (cols > 25 || rows.length > 25) return { error: 'Maximum size is 25x25.' };
+
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].length !== cols) {
+      return { error: `Row ${i + 1} has ${rows[i].length} values, expected ${cols}.` };
+    }
+  }
+
+  const clueSum = rows.reduce((s, row) => s + row.reduce((a, b) => a + b, 0), 0);
+  const area = rows.length * cols;
+  if (clueSum !== area) {
+    return { error: `Clue sum (${clueSum}) must equal grid area (${area}).` };
+  }
+
+  return { grid: rows };
+}
+
+function loadCustomPuzzle(andSolve) {
+  const parsed = parseCustomGrid(customInput.value);
+  if (parsed.error) {
+    customError.textContent = parsed.error;
+    return;
+  }
+
+  customError.textContent = '';
+  modalOverlay.classList.remove('visible');
+
+  grid = parsed.grid;
+  gridSize = Math.max(grid.length, grid[0].length);
+  sizeLabel.textContent = `${grid[0].length}\u00d7${grid.length}`;
+  playerRects = [];
+  undoStack = [];
+  solved = false;
+  timerStart = null;
+  clearInterval(timerInterval);
+  timerEl.textContent = '0:00';
+  statusEl.textContent = 'Custom puzzle loaded. ' + (andSolve ? 'Solving...' : 'Draw rectangles to solve.');
+  statusEl.className = 'status';
+  renderGrid();
+
+  if (andSolve) {
+    requestAnimationFrame(() => setTimeout(() => {
+      const result = solveShikaku(grid);
+      if (!result) {
+        statusEl.textContent = 'No solution found for this puzzle.';
+        statusEl.className = 'status error';
+        return;
+      }
+      playerRects = result.map(({ rect }, i) => ({
+        r1: rect[0], c1: rect[1], r2: rect[2], c2: rect[3],
+        color: COLORS[i % COLORS.length],
+      }));
+      renderOverlays();
+      solved = true;
+      statusEl.textContent = 'Solved!';
+      statusEl.className = 'status win';
+    }, 16));
+  }
+}
+
+document.getElementById('btn-custom').addEventListener('click', () => {
+  customError.textContent = '';
+  modalOverlay.classList.add('visible');
+});
+document.getElementById('btn-custom-cancel').addEventListener('click', () => {
+  modalOverlay.classList.remove('visible');
+});
+document.getElementById('btn-custom-load').addEventListener('click', () => loadCustomPuzzle(true));
+document.getElementById('btn-custom-play').addEventListener('click', () => loadCustomPuzzle(false));
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) modalOverlay.classList.remove('visible');
+});
 
 // ─── Controls ──────────────────────────────────────────────────────
 
@@ -720,7 +902,6 @@ function autoSolve() {
   statusEl.textContent = 'Solving...';
   statusEl.className = 'status';
 
-  // Use requestAnimationFrame so the status updates visually
   requestAnimationFrame(() => {
     setTimeout(() => {
       const result = solveShikaku(grid);
@@ -749,8 +930,8 @@ function autoSolve() {
 }
 
 function changeSize(delta) {
-  gridSize = Math.max(3, Math.min(10, gridSize + delta));
-  sizeLabel.textContent = `${gridSize}×${gridSize}`;
+  gridSize = Math.max(3, Math.min(25, gridSize + delta));
+  sizeLabel.textContent = `${gridSize}\u00d7${gridSize}`;
   newPuzzle();
 }
 
@@ -762,9 +943,117 @@ document.addEventListener('mouseup', onPointerUp);
 gridEl.addEventListener('touchstart', onPointerDown, { passive: false });
 document.addEventListener('touchmove', onPointerMove, { passive: false });
 document.addEventListener('touchend', onPointerUp);
-
-// Prevent context menu on long press
 gridEl.addEventListener('contextmenu', e => e.preventDefault());
+
+// ─── Self-Tests (run on load, output to console) ──────────────────
+
+(function runTests() {
+  let passed = 0, failed = 0;
+
+  function assert(ok, msg) {
+    if (ok) { passed++; }
+    else { failed++; console.error('FAIL:', msg); }
+  }
+
+  function validateSolution(g, sol) {
+    const rows = g.length, cols = g[0].length;
+    const cov = Array.from({ length: rows }, () => new Int8Array(cols).fill(-1));
+    for (let i = 0; i < sol.length; i++) {
+      const { clue, rect } = sol[i];
+      const [cr, cc, val] = clue;
+      const [r1, c1, r2, c2] = rect;
+      const area = (r2 - r1 + 1) * (c2 - c1 + 1);
+      if (area !== val) return `rect ${i}: area ${area} != clue ${val}`;
+      if (cr < r1 || cr > r2 || cc < c1 || cc > c2) return `rect ${i}: clue outside rect`;
+      if (r1 < 0 || c1 < 0 || r2 >= rows || c2 >= cols) return `rect ${i}: out of bounds`;
+      for (let r = r1; r <= r2; r++)
+        for (let c = c1; c <= c2; c++) {
+          if (g[r][c] > 0 && !(r === cr && c === cc)) return `rect ${i}: extra clue at (${r},${c})`;
+          if (cov[r][c] !== -1) return `rect ${i}: overlaps rect ${cov[r][c]} at (${r},${c})`;
+          cov[r][c] = i;
+        }
+    }
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (cov[r][c] === -1) return `cell (${r},${c}) uncovered`;
+    return null;
+  }
+
+  // Test 1: Solve known 5x5
+  const p5 = [[0,6,0,0,4],[0,0,0,0,0],[0,0,5,0,0],[4,0,0,0,0],[0,0,0,6,0]];
+  const s5 = solveShikaku(p5);
+  assert(s5 !== null, '5x5: should find solution');
+  if (s5) assert(validateSolution(p5, s5) === null, '5x5: ' + validateSolution(p5, s5));
+
+  // Test 2: Solve known 6x6
+  const p6 = [[6,0,0,0,0,0],[0,0,0,0,0,6],[0,6,0,0,0,0],[0,0,0,0,6,0],[0,0,0,6,0,0],[6,0,0,0,0,0]];
+  const s6 = solveShikaku(p6);
+  assert(s6 !== null, '6x6: should find solution');
+  if (s6) assert(validateSolution(p6, s6) === null, '6x6: ' + validateSolution(p6, s6));
+
+  // Test 3: Solve known 7x7
+  const p7 = [[6,0,0,0,0,0,8],[0,0,0,0,0,0,0],[0,0,6,0,0,4,0],[0,0,0,4,0,0,0],[9,0,0,0,0,0,3],[0,0,0,0,6,0,0],[0,0,0,3,0,0,0]];
+  const s7 = solveShikaku(p7);
+  assert(s7 !== null, '7x7: should find solution');
+  if (s7) assert(validateSolution(p7, s7) === null, '7x7: ' + validateSolution(p7, s7));
+
+  // Test 4: Trivial 1x1
+  const s1 = solveShikaku([[1]]);
+  assert(s1 !== null, '1x1: should find solution');
+
+  // Test 5: Simple 2x2
+  const s2 = solveShikaku([[4,0],[0,0]]);
+  assert(s2 !== null && s2.length === 1, '2x2: should have 1 rect');
+
+  // Test 6: Reject bad clue sum
+  assert(solveShikaku([[3,0],[0,0]]) === null, 'bad sum: should return null');
+
+  // Test 7: Reject unsolvable
+  assert(solveShikaku([[2,2],[0,0]]) === null, 'unsolvable: should return null');
+
+  // Test 8: Generator produces valid grids with correct clue sums
+  for (const sz of [3, 4, 5, 6, 7, 8, 10, 15]) {
+    for (let t = 0; t < 3; t++) {
+      const g = generatePuzzle(sz, sz);
+      assert(g.length === sz && g[0].length === sz, `gen ${sz}x${sz}: wrong dimensions`);
+      let sum = 0;
+      for (let r = 0; r < sz; r++) for (let c = 0; c < sz; c++) sum += g[r][c];
+      assert(sum === sz * sz, `gen ${sz}x${sz} trial ${t}: clue sum ${sum} != ${sz * sz}`);
+    }
+  }
+
+  // Test 9: Generated puzzles are solvable (test small sizes)
+  for (const sz of [3, 4, 5, 6, 7]) {
+    for (let t = 0; t < 3; t++) {
+      const g = generatePuzzle(sz, sz);
+      const sol = solveShikaku(g);
+      assert(sol !== null, `gen ${sz}x${sz} trial ${t}: should be solvable`);
+      if (sol) {
+        const err = validateSolution(g, sol);
+        assert(err === null, `gen ${sz}x${sz} trial ${t}: ${err}`);
+      }
+    }
+  }
+
+  // Test 10: Custom puzzle parser
+  const r1 = parseCustomGrid('0 6 0\n0 0 0\n3 0 0');
+  assert(r1.grid && r1.grid.length === 3, 'parser: valid 3x3');
+
+  const r2 = parseCustomGrid('1 2\n3');
+  assert(r2.error, 'parser: reject uneven rows');
+
+  const r3 = parseCustomGrid('');
+  assert(r3.error, 'parser: reject empty');
+
+  const r4 = parseCustomGrid('1 a\n0 0');
+  assert(r4.error, 'parser: reject non-numbers');
+
+  if (failed === 0) {
+    console.log(`%cShikaku tests: all ${passed} passed`, 'color: #4ecdc4; font-weight: bold');
+  } else {
+    console.warn(`Shikaku tests: ${passed} passed, ${failed} FAILED`);
+  }
+})();
 
 // ─── Init ──────────────────────────────────────────────────────────
 
