@@ -4,56 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shikakukata — Shikaku Puzzle</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: system-ui, sans-serif;
-    background: #111;
-    color: #ccc;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-    user-select: none;
-  }
-  h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 2px; color: #e94560; }
-  .subtitle { font-size: 0.8rem; color: #777; margin-bottom: 16px; }
-  .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; }
-  button { background: #222; color: #ccc; border: 1px solid #444; padding: 6px 14px; cursor: pointer; font-size: 0.85rem; }
-  button:hover { background: #333; }
-  button.active { border-color: #e94560; color: #e94560; }
-  .size-controls { display: flex; gap: 4px; align-items: center; }
-  .size-controls span { font-size: 0.85rem; color: #777; min-width: 40px; text-align: center; }
-  .status { font-size: 0.85rem; margin-bottom: 10px; min-height: 1.2em; color: #777; }
-  .status.win { color: #4ecdc4; font-weight: 600; }
-  .status.error { color: #e94560; }
-  .timer { font-size: 0.8rem; color: #555; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
-  #grid-container { position: relative; margin-bottom: 16px; }
-  #grid { display: grid; background: #000; gap: 1px; border: 1px solid #444; }
-  .cell {
-    width: 36px; height: 36px;
-    background: #1a1a1a;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.85rem; font-weight: 600;
-    cursor: crosshair;
-  }
-  .cell.clue { color: #fff; }
-  .cell.empty { color: transparent; }
-  .cell.selecting { background: rgba(233, 69, 96, 0.2); }
-  .cell.editable { cursor: pointer; color: #f7dc6f; }
-  .cell.editable:hover { background: #252525; }
-  .rect-overlay { position: absolute; border: 2px solid; pointer-events: none; z-index: 10; }
-  .rect-overlay.invalid { border-style: dashed; }
-  .instructions { max-width: 480px; text-align: center; font-size: 0.78rem; color: #555; line-height: 1.5; margin-top: 8px; }
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
-  .modal-overlay.visible { display: flex; }
-  .modal { background: #1a1a1a; border: 1px solid #444; padding: 20px; max-width: 480px; width: 90%; }
-  .modal h2 { font-size: 1rem; margin-bottom: 10px; }
-  .modal p { font-size: 0.8rem; color: #777; margin-bottom: 10px; line-height: 1.4; }
-  .modal textarea { width: 100%; height: 140px; background: #111; color: #ccc; border: 1px solid #444; padding: 8px; font-family: monospace; font-size: 0.85rem; resize: vertical; margin-bottom: 10px; }
-  .modal .modal-buttons { display: flex; gap: 6px; justify-content: flex-end; }
-  .modal .error-msg { color: #e94560; font-size: 0.8rem; margin-bottom: 6px; min-height: 1.1em; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -62,9 +13,9 @@
 
 <div class="controls">
   <div class="size-controls">
-    <button id="btn-smaller">&minus;</button>
+    <button id="btn-smaller" aria-label="Decrease grid size">&minus;</button>
     <span id="size-label">5&times;5</span>
-    <button id="btn-larger">+</button>
+    <button id="btn-larger" aria-label="Increase grid size">+</button>
   </div>
   <button id="btn-new">New Puzzle</button>
   <button id="btn-custom">Custom</button>
@@ -78,7 +29,8 @@
 <div class="status" id="status">Drag to draw rectangles. Each must contain exactly one number equal to its area.</div>
 
 <div id="grid-container">
-  <div id="grid"></div>
+  <div id="grid" role="grid" aria-label="Shikaku puzzle grid"></div>
+  <div id="selection-overlay"></div>
 </div>
 
 <div class="instructions">
@@ -90,13 +42,14 @@
   Auto-solver &middot;
   Paste your own puzzle via <strong>Custom</strong> &middot;
   Edit cells directly via <strong>Edit Grid</strong> &middot;
-  Diagnostics for unsolvable puzzles
+  Diagnostics for unsolvable puzzles<br>
+  <a href="algorithm.html">How the solver algorithm works</a>
 </div>
 
 <!-- Custom puzzle modal -->
 <div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
-    <h2>Enter Custom Puzzle</h2>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title">Enter Custom Puzzle</h2>
     <p>
       Enter numbers separated by spaces, one row per line.
       Use <strong>0</strong> for empty cells. All rows must have the same length,
@@ -116,442 +69,8 @@
   </div>
 </div>
 
+<script src="solver.js"></script>
 <script>
-// ─── Shikaku Solver ────────────────────────────────────────────────
-
-// Synchronous solver (used by tests and small grids)
-function solveShikaku(grid) {
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const totalArea = rows * cols;
-
-  const clues = [];
-  for (let r = 0; r < rows; r++)
-    for (let c = 0; c < cols; c++)
-      if (grid[r][c] > 0) clues.push([r, c, grid[r][c]]);
-
-  const clueSum = clues.reduce((s, cl) => s + cl[2], 0);
-  if (clueSum !== totalArea) return null;
-
-  const covered = Array.from({ length: rows }, () => new Int8Array(cols).fill(-1));
-
-  function getRectangles(cr, cc, area) {
-    const rects = [];
-    for (let h = 1; h <= area; h++) {
-      if (area % h !== 0) continue;
-      const w = area / h;
-      for (let r1 = cr - h + 1; r1 <= cr; r1++) {
-        for (let c1 = cc - w + 1; c1 <= cc; c1++) {
-          const r2 = r1 + h - 1;
-          const c2 = c1 + w - 1;
-          if (r1 >= 0 && r2 < rows && c1 >= 0 && c2 < cols)
-            rects.push([r1, c1, r2, c2]);
-        }
-      }
-    }
-    return rects;
-  }
-
-  const allRects = clues.map(([cr, cc, val]) => getRectangles(cr, cc, val));
-
-  const order = [...Array(clues.length).keys()].sort((a, b) => allRects[a].length - allRects[b].length);
-  const sortedClues = order.map(i => clues[i]);
-  const sortedRects = order.map(i => allRects[i]);
-
-  function rectIsFree(r1, c1, r2, c2) {
-    for (let r = r1; r <= r2; r++)
-      for (let c = c1; c <= c2; c++)
-        if (covered[r][c] !== -1) return false;
-    return true;
-  }
-
-  function hasOtherClue(r1, c1, r2, c2, idx) {
-    for (let i = 0; i < sortedClues.length; i++) {
-      if (i === idx) continue;
-      const [cr, cc] = sortedClues[i];
-      if (cr >= r1 && cr <= r2 && cc >= c1 && cc <= c2) return true;
-    }
-    return false;
-  }
-
-  function place(r1, c1, r2, c2, idx) {
-    for (let r = r1; r <= r2; r++)
-      for (let c = c1; c <= c2; c++)
-        covered[r][c] = idx;
-  }
-
-  function unplace(r1, c1, r2, c2) {
-    for (let r = r1; r <= r2; r++)
-      for (let c = c1; c <= c2; c++)
-        covered[r][c] = -1;
-  }
-
-  const solution = new Array(sortedClues.length).fill(null);
-
-  function backtrack(idx) {
-    if (idx === sortedClues.length) {
-      for (let r = 0; r < rows; r++)
-        for (let c = 0; c < cols; c++)
-          if (covered[r][c] === -1) return false;
-      return true;
-    }
-
-    const [cr, cc] = sortedClues[idx];
-    if (covered[cr][cc] !== -1) return false;
-
-    for (const rect of sortedRects[idx]) {
-      const [r1, c1, r2, c2] = rect;
-      if (rectIsFree(r1, c1, r2, c2) && !hasOtherClue(r1, c1, r2, c2, idx)) {
-        place(r1, c1, r2, c2, idx);
-        solution[idx] = rect;
-        if (backtrack(idx + 1)) return true;
-        unplace(r1, c1, r2, c2);
-        solution[idx] = null;
-      }
-    }
-    return false;
-  }
-
-  if (backtrack(0)) {
-    const result = [];
-    for (let i = 0; i < sortedClues.length; i++) {
-      result.push({ clue: sortedClues[i], rect: solution[i] });
-    }
-    return result;
-  }
-  return null;
-}
-
-// Async solver with progress callback, forward checking, and UI yielding
-function solveShikakuAsync(grid, onProgress) {
-  return new Promise((resolve) => {
-    const rows = grid.length;
-    const cols = grid[0].length;
-    const totalArea = rows * cols;
-
-    const clues = [];
-    for (let r = 0; r < rows; r++)
-      for (let c = 0; c < cols; c++)
-        if (grid[r][c] > 0) clues.push([r, c, grid[r][c]]);
-
-    const clueSum = clues.reduce((s, cl) => s + cl[2], 0);
-    if (clueSum !== totalArea) { resolve(null); return; }
-
-    const covered = Array.from({ length: rows }, () => new Int8Array(cols).fill(-1));
-
-    function getRectangles(cr, cc, area) {
-      const rects = [];
-      for (let h = 1; h <= area; h++) {
-        if (area % h !== 0) continue;
-        const w = area / h;
-        for (let r1 = cr - h + 1; r1 <= cr; r1++) {
-          for (let c1 = cc - w + 1; c1 <= cc; c1++) {
-            const r2 = r1 + h - 1;
-            const c2 = c1 + w - 1;
-            if (r1 >= 0 && r2 < rows && c1 >= 0 && c2 < cols)
-              rects.push([r1, c1, r2, c2]);
-          }
-        }
-      }
-      return rects;
-    }
-
-    // Pre-filter: remove rects containing other clues
-    const allRects = clues.map(([cr, cc, val], idx) => {
-      const rects = getRectangles(cr, cc, val);
-      return rects.filter(([r1, c1, r2, c2]) => {
-        for (let i = 0; i < clues.length; i++) {
-          if (i === idx) continue;
-          const [ocr, occ] = clues[i];
-          if (ocr >= r1 && ocr <= r2 && occ >= c1 && occ <= c2) return false;
-        }
-        return true;
-      });
-    });
-
-    // MRV sort
-    const order = [...Array(clues.length).keys()].sort((a, b) => allRects[a].length - allRects[b].length);
-    const sortedClues = order.map(i => clues[i]);
-    const sortedRects = order.map(i => allRects[i]);
-    const total = sortedClues.length;
-
-    function rectIsFree(r1, c1, r2, c2) {
-      for (let r = r1; r <= r2; r++)
-        for (let c = c1; c <= c2; c++)
-          if (covered[r][c] !== -1) return false;
-      return true;
-    }
-
-    function place(r1, c1, r2, c2, idx) {
-      for (let r = r1; r <= r2; r++)
-        for (let c = c1; c <= c2; c++)
-          covered[r][c] = idx;
-    }
-
-    function unplace(r1, c1, r2, c2) {
-      for (let r = r1; r <= r2; r++)
-        for (let c = c1; c <= c2; c++)
-          covered[r][c] = -1;
-    }
-
-    // Forward check: do all remaining unplaced clues still have >= 1 valid rect?
-    function forwardCheck(fromIdx) {
-      for (let i = fromIdx; i < total; i++) {
-        if (solution[i] !== null) continue;
-        const [cr, cc] = sortedClues[i];
-        if (covered[cr][cc] !== -1) return false;
-        let hasValid = false;
-        for (const [r1, c1, r2, c2] of sortedRects[i]) {
-          if (rectIsFree(r1, c1, r2, c2)) { hasValid = true; break; }
-        }
-        if (!hasValid) return false;
-      }
-      return true;
-    }
-
-    const solution = new Array(total).fill(null);
-    let maxDepth = 0;
-    let steps = 0;
-    let solveStart = performance.now();
-    let lastProgressUpdate = 0;
-
-    function backtrack(idx) {
-      if (idx === total) {
-        for (let r = 0; r < rows; r++)
-          for (let c = 0; c < cols; c++)
-            if (covered[r][c] === -1) return false;
-        return true;
-      }
-
-      const [cr, cc] = sortedClues[idx];
-      if (covered[cr][cc] !== -1) return false;
-
-      for (const rect of sortedRects[idx]) {
-        const [r1, c1, r2, c2] = rect;
-        if (!rectIsFree(r1, c1, r2, c2)) continue;
-
-        place(r1, c1, r2, c2, idx);
-        solution[idx] = rect;
-        steps++;
-        if (idx + 1 > maxDepth) maxDepth = idx + 1;
-
-        if (forwardCheck(idx + 1) && backtrack(idx + 1)) return true;
-
-        unplace(r1, c1, r2, c2);
-        solution[idx] = null;
-      }
-      return false;
-    }
-
-    function runSolver() {
-      if (onProgress) onProgress(maxDepth, total);
-      const found = backtrack(0);
-      const elapsed = ((performance.now() - solveStart) / 1000).toFixed(1);
-      if (found) {
-        const result = [];
-        for (let i = 0; i < total; i++)
-          result.push({ clue: sortedClues[i], rect: solution[i] });
-        resolve(result);
-      } else {
-        resolve(null);
-      }
-    }
-
-    setTimeout(runSolver, 0);
-  });
-}
-
-// ─── Puzzle Diagnostics ────────────────────────────────────────────
-
-function diagnosePuzzle(grid) {
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const totalArea = rows * cols;
-  const reasons = [];
-
-  // Collect clues
-  const clues = [];
-  for (let r = 0; r < rows; r++)
-    for (let c = 0; c < cols; c++)
-      if (grid[r][c] > 0) clues.push([r, c, grid[r][c]]);
-
-  if (clues.length === 0) {
-    reasons.push('The grid has no clues at all.');
-    return reasons;
-  }
-
-  // Check clue sum
-  const clueSum = clues.reduce((s, cl) => s + cl[2], 0);
-  if (clueSum !== totalArea) {
-    reasons.push(`Clue sum (${clueSum}) does not equal grid area (${totalArea}).`);
-    return reasons;
-  }
-
-  // For each clue, find all valid rectangles (no out-of-bounds)
-  function getRectangles(cr, cc, area) {
-    const rects = [];
-    for (let h = 1; h <= area; h++) {
-      if (area % h !== 0) continue;
-      const w = area / h;
-      for (let r1 = cr - h + 1; r1 <= cr; r1++) {
-        for (let c1 = cc - w + 1; c1 <= cc; c1++) {
-          const r2 = r1 + h - 1;
-          const c2 = c1 + w - 1;
-          if (r1 >= 0 && r2 < rows && c1 >= 0 && c2 < cols)
-            rects.push([r1, c1, r2, c2]);
-        }
-      }
-    }
-    return rects;
-  }
-
-  // Check each clue for obvious issues
-  for (const [cr, cc, val] of clues) {
-    // Clue too large for entire grid
-    if (val > totalArea) {
-      reasons.push(`Clue ${val} at (${cr + 1},${cc + 1}) exceeds the grid area (${totalArea}).`);
-      continue;
-    }
-
-    const rects = getRectangles(cr, cc, val);
-    if (rects.length === 0) {
-      reasons.push(`Clue ${val} at (${cr + 1},${cc + 1}) has no possible rectangle that fits on the grid.`);
-      continue;
-    }
-
-    // Filter out rects that contain other clues
-    const validRects = rects.filter(([r1, c1, r2, c2]) => {
-      for (const [ocr, occ, _] of clues) {
-        if (ocr === cr && occ === cc) continue;
-        if (ocr >= r1 && ocr <= r2 && occ >= c1 && occ <= c2) return false;
-      }
-      return true;
-    });
-
-    if (validRects.length === 0) {
-      reasons.push(`Clue ${val} at (${cr + 1},${cc + 1}): every possible rectangle contains another clue.`);
-    }
-  }
-
-  // Check for cells unreachable by any clue
-  const reachable = Array.from({ length: rows }, () => new Uint8Array(cols));
-  for (const [cr, cc, val] of clues) {
-    const rects = getRectangles(cr, cc, val);
-    for (const [r1, c1, r2, c2] of rects) {
-      for (let r = r1; r <= r2; r++)
-        for (let c = c1; c <= c2; c++)
-          reachable[r][c] = 1;
-    }
-  }
-  const unreachableCells = [];
-  for (let r = 0; r < rows; r++)
-    for (let c = 0; c < cols; c++)
-      if (!reachable[r][c]) unreachableCells.push(`(${r + 1},${c + 1})`);
-
-  if (unreachableCells.length > 0) {
-    const shown = unreachableCells.length <= 5
-      ? unreachableCells.join(', ')
-      : unreachableCells.slice(0, 5).join(', ') + ` and ${unreachableCells.length - 5} more`;
-    reasons.push(`${unreachableCells.length} cell(s) cannot be reached by any clue's rectangle: ${shown}.`);
-  }
-
-  // Check for adjacent clues that are both 1 (impossible — overlap)
-  for (let i = 0; i < clues.length; i++) {
-    for (let j = i + 1; j < clues.length; j++) {
-      const [r1, c1, v1] = clues[i];
-      const [r2, c2, v2] = clues[j];
-      if (v1 === 1 && v2 === 1 && Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1) {
-        reasons.push(`Two adjacent clues of 1 at (${r1 + 1},${c1 + 1}) and (${r2 + 1},${c2 + 1}) — both need a 1x1 rectangle, leaving the other's cell uncoverable.`);
-      }
-    }
-  }
-
-  if (reasons.length === 0) {
-    reasons.push('No obvious structural issue found; the puzzle is valid but the backtracking search found no solution (conflicting constraints).');
-  }
-
-  return reasons;
-}
-
-// ─── Puzzle Generator ──────────────────────────────────────────────
-
-function generatePuzzle(rows, cols) {
-  const grid = Array.from({ length: rows }, () => new Array(cols).fill(0));
-  const used = Array.from({ length: rows }, () => new Uint8Array(cols));
-  const rects = [];
-
-  function findFirstEmpty() {
-    for (let r = 0; r < rows; r++)
-      for (let c = 0; c < cols; c++)
-        if (!used[r][c]) return [r, c];
-    return null;
-  }
-
-  function canPlace(r1, c1, r2, c2) {
-    if (r2 >= rows || c2 >= cols) return false;
-    for (let r = r1; r <= r2; r++)
-      for (let c = c1; c <= c2; c++)
-        if (used[r][c]) return false;
-    return true;
-  }
-
-  function markUsed(r1, c1, r2, c2) {
-    for (let r = r1; r <= r2; r++)
-      for (let c = c1; c <= c2; c++)
-        used[r][c] = 1;
-  }
-
-  const maxDim = Math.min(8, Math.max(rows, cols));
-
-  while (true) {
-    const cell = findFirstEmpty();
-    if (!cell) break;
-    const [r, c] = cell;
-
-    const maxArea = Math.min(rows * cols - rects.reduce((s, rc) => s + (rc[2] - rc[0] + 1) * (rc[3] - rc[1] + 1), 0), rows * cols);
-    const candidates = [];
-
-    for (let h = 1; h <= Math.min(rows - r, maxDim); h++) {
-      for (let w = 1; w <= Math.min(cols - c, maxDim); w++) {
-        const area = h * w;
-        if (area > 0 && area <= Math.min(maxArea, rows + cols) && canPlace(r, c, r + h - 1, c + w - 1)) {
-          candidates.push([r, c, r + h - 1, c + w - 1]);
-        }
-      }
-    }
-
-    if (candidates.length === 0) {
-      if (!used[r][c]) {
-        used[r][c] = 1;
-        rects.push([r, c, r, c]);
-      }
-      continue;
-    }
-
-    candidates.sort(() => Math.random() - 0.5);
-    const weighted = candidates.filter(([r1, c1, r2, c2]) => {
-      const a = (r2 - r1 + 1) * (c2 - c1 + 1);
-      return a >= 2 && a <= Math.max(6, Math.floor(rows * cols / 4));
-    });
-
-    const chosen = (weighted.length > 0 ? weighted : candidates)[0];
-    markUsed(...chosen);
-    rects.push(chosen);
-  }
-
-  for (const [r1, c1, r2, c2] of rects) {
-    const area = (r2 - r1 + 1) * (c2 - c1 + 1);
-    const cells = [];
-    for (let r = r1; r <= r2; r++)
-      for (let c = c1; c <= c2; c++)
-        cells.push([r, c]);
-    const [cr, cc] = cells[Math.floor(Math.random() * cells.length)];
-    grid[cr][cc] = area;
-  }
-
-  return grid;
-}
-
 // ─── Game State ────────────────────────────────────────────────────
 
 const COLORS = [
@@ -574,36 +93,60 @@ let timerInterval = null;
 let solved = false;
 let editMode = false;
 let solving = false;
+let activeEditInput = null;
 
 const gridEl = document.getElementById('grid');
 const gridContainer = document.getElementById('grid-container');
 const statusEl = document.getElementById('status');
 const timerEl = document.getElementById('timer');
 const sizeLabel = document.getElementById('size-label');
+const selectionOverlay = document.getElementById('selection-overlay');
 
 // ─── Rendering ─────────────────────────────────────────────────────
+
+let cellPool = [];
+let poolRows = 0;
+let poolCols = 0;
+
+function getCellSize() {
+  return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--cell-size'), 10);
+}
 
 function renderGrid() {
   const rows = grid.length;
   const cols = grid[0].length;
+  const cellSize = getComputedStyle(document.documentElement).getPropertyValue('--cell-size').trim();
 
-  gridEl.style.gridTemplateColumns = `repeat(${cols}, 36px)`;
-  gridEl.style.gridTemplateRows = `repeat(${rows}, 36px)`;
-  gridEl.innerHTML = '';
+  gridEl.style.gridTemplateColumns = `repeat(${cols}, ${cellSize})`;
+  gridEl.style.gridTemplateRows = `repeat(${rows}, ${cellSize})`;
+
+  if (poolRows !== rows || poolCols !== cols) {
+    cellPool = [];
+    const fragment = document.createDocumentFragment();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = document.createElement('div');
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cellPool.push(cell);
+        fragment.appendChild(cell);
+      }
+    }
+    gridEl.replaceChildren(fragment);
+    poolRows = rows;
+    poolCols = cols;
+  }
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const cell = document.createElement('div');
+      const cell = cellPool[r * cols + c];
+      const val = grid[r][c];
       if (editMode) {
-        cell.className = 'cell editable' + (grid[r][c] > 0 ? ' clue' : '');
-        cell.textContent = grid[r][c] > 0 ? grid[r][c] : '';
+        cell.className = 'cell editable' + (val > 0 ? ' clue' : '');
       } else {
-        cell.className = 'cell' + (grid[r][c] > 0 ? ' clue' : ' empty');
-        cell.textContent = grid[r][c] > 0 ? grid[r][c] : '';
+        cell.className = 'cell' + (val > 0 ? ' clue' : ' empty');
       }
-      cell.dataset.r = r;
-      cell.dataset.c = c;
-      gridEl.appendChild(cell);
+      cell.textContent = val > 0 ? val : '';
     }
   }
 
@@ -613,7 +156,7 @@ function renderGrid() {
 function renderOverlays() {
   gridContainer.querySelectorAll('.rect-overlay').forEach(el => el.remove());
 
-  const cellSize = 36;
+  const cellSize = getCellSize();
   const gap = 1;
   const border = 1;
 
@@ -667,23 +210,30 @@ function isRectValid(r1, c1, r2, c2, selfIdx) {
 }
 
 function updateSelectionHighlight() {
-  const cells = gridEl.querySelectorAll('.cell');
-  cells.forEach(cell => cell.classList.remove('selecting'));
+  if (!isDragging || !dragStart || !dragEnd) {
+    selectionOverlay.style.display = 'none';
+    return;
+  }
 
-  if (!isDragging || !dragStart || !dragEnd) return;
+  const cellSize = getCellSize();
+  const gap = 1;
+  const border = 1;
 
   const r1 = Math.min(dragStart.r, dragEnd.r);
   const r2 = Math.max(dragStart.r, dragEnd.r);
   const c1 = Math.min(dragStart.c, dragEnd.c);
   const c2 = Math.max(dragStart.c, dragEnd.c);
 
-  cells.forEach(cell => {
-    const r = parseInt(cell.dataset.r);
-    const c = parseInt(cell.dataset.c);
-    if (r >= r1 && r <= r2 && c >= c1 && c <= c2) {
-      cell.classList.add('selecting');
-    }
-  });
+  const x = border + c1 * (cellSize + gap);
+  const y = border + r1 * (cellSize + gap);
+  const w = (c2 - c1 + 1) * (cellSize + gap) - gap;
+  const h = (r2 - r1 + 1) * (cellSize + gap) - gap;
+
+  selectionOverlay.style.left = x + 'px';
+  selectionOverlay.style.top = y + 'px';
+  selectionOverlay.style.width = w + 'px';
+  selectionOverlay.style.height = h + 'px';
+  selectionOverlay.style.display = 'block';
 }
 
 function checkWin() {
@@ -718,7 +268,7 @@ function getCellFromEvent(e) {
   const touch = e.touches ? e.touches[0] : e;
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
   if (el && el.classList.contains('cell')) {
-    return { r: parseInt(el.dataset.r), c: parseInt(el.dataset.c) };
+    return { r: +el.dataset.r, c: +el.dataset.c };
   }
   return null;
 }
@@ -841,37 +391,15 @@ const modalOverlay = document.getElementById('modal-overlay');
 const customInput = document.getElementById('custom-input');
 const customError = document.getElementById('custom-error');
 
-function parseCustomGrid(text) {
-  const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  if (lines.length === 0) return { error: 'No input provided.' };
+function openModal() {
+  customError.textContent = '';
+  modalOverlay.classList.add('visible');
+  customInput.focus();
+}
 
-  const rows = [];
-  for (const line of lines) {
-    const nums = line.split(/[\s,]+/).filter(s => s.length > 0).map(Number);
-    if (nums.length === 0) continue;
-    if (nums.some(isNaN)) return { error: `Invalid number in row: "${line}"` };
-    if (nums.some(n => n < 0)) return { error: 'Negative numbers are not allowed.' };
-    rows.push(nums);
-  }
-
-  if (rows.length === 0) return { error: 'No input provided.' };
-  const cols = rows[0].length;
-  if (cols === 0) return { error: 'Empty row.' };
-  if (cols > 25 || rows.length > 25) return { error: 'Maximum size is 25x25.' };
-
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].length !== cols) {
-      return { error: `Row ${i + 1} has ${rows[i].length} values, expected ${cols}.` };
-    }
-  }
-
-  const clueSum = rows.reduce((s, row) => s + row.reduce((a, b) => a + b, 0), 0);
-  const area = rows.length * cols;
-  if (clueSum !== area) {
-    return { error: `Clue sum (${clueSum}) must equal grid area (${area} = ${rows.length}\u00d7${cols}).` };
-  }
-
-  return { grid: rows };
+function closeModal() {
+  modalOverlay.classList.remove('visible');
+  document.getElementById('btn-custom').focus();
 }
 
 function loadCustomPuzzle(andSolve) {
@@ -882,7 +410,7 @@ function loadCustomPuzzle(andSolve) {
   }
 
   customError.textContent = '';
-  modalOverlay.classList.remove('visible');
+  closeModal();
 
   grid = parsed.grid;
   gridSize = Math.max(grid.length, grid[0].length);
@@ -930,17 +458,12 @@ function loadCustomPuzzle(andSolve) {
   }
 }
 
-document.getElementById('btn-custom').addEventListener('click', () => {
-  customError.textContent = '';
-  modalOverlay.classList.add('visible');
-});
-document.getElementById('btn-custom-cancel').addEventListener('click', () => {
-  modalOverlay.classList.remove('visible');
-});
+document.getElementById('btn-custom').addEventListener('click', openModal);
+document.getElementById('btn-custom-cancel').addEventListener('click', closeModal);
 document.getElementById('btn-custom-load').addEventListener('click', () => loadCustomPuzzle(true));
 document.getElementById('btn-custom-play').addEventListener('click', () => loadCustomPuzzle(false));
 modalOverlay.addEventListener('click', (e) => {
-  if (e.target === modalOverlay) modalOverlay.classList.remove('visible');
+  if (e.target === modalOverlay) closeModal();
 });
 
 // ─── Controls ──────────────────────────────────────────────────────
@@ -988,7 +511,6 @@ async function autoSolve() {
   statusEl.textContent = 'Solving...';
   statusEl.className = 'status';
 
-  // Animate the status while solver runs
   const dots = ['Solving.', 'Solving..', 'Solving...'];
   let dotIdx = 0;
   const animInterval = setInterval(() => {
@@ -1051,7 +573,7 @@ function toggleEditMode() {
     renderGrid();
   } else {
     btn.classList.remove('active');
-    // Validate the edited grid
+    commitEditInput();
     const rows = grid.length;
     const cols = grid[0].length;
     let clueSum = 0;
@@ -1073,22 +595,70 @@ function toggleEditMode() {
   }
 }
 
-function onEditCellClick(e) {
-  if (!editMode) return;
-  const el = e.target.closest('.cell');
-  if (!el) return;
-  const r = parseInt(el.dataset.r);
-  const c = parseInt(el.dataset.c);
-  const current = grid[r][c];
-  const input = prompt(`Enter clue value for cell (${r + 1},${c + 1}).\n0 = empty.`, current);
-  if (input === null) return;
-  const val = parseInt(input, 10);
-  if (isNaN(val) || val < 0) return;
-  grid[r][c] = val;
+function commitEditInput() {
+  if (!activeEditInput) return;
+  const input = activeEditInput;
+  activeEditInput = null;
+  const r = +input.dataset.r;
+  const c = +input.dataset.c;
+  const val = parseInt(input.value, 10);
+  grid[r][c] = (isNaN(val) || val < 0) ? 0 : val;
   renderGrid();
 }
 
+function onEditCellClick(e) {
+  if (!editMode) return;
+  const el = e.target.closest('.cell');
+  if (!el || el.querySelector('.cell-input')) return;
+
+  commitEditInput();
+
+  const r = +el.dataset.r;
+  const c = +el.dataset.c;
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'cell-input';
+  input.value = grid[r][c] > 0 ? grid[r][c] : '';
+  input.min = '0';
+  input.dataset.r = r;
+  input.dataset.c = c;
+
+  el.textContent = '';
+  el.appendChild(input);
+  activeEditInput = input;
+
+  input.focus();
+  input.select();
+
+  input.addEventListener('blur', commitEditInput);
+  input.addEventListener('keydown', (evt) => {
+    if (evt.key === 'Enter') input.blur();
+    if (evt.key === 'Escape') { activeEditInput = null; renderGrid(); }
+  });
+
+  e.stopPropagation();
+}
+
 gridEl.addEventListener('click', onEditCellClick);
+
+// ─── Keyboard Shortcuts ────────────────────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (modalOverlay.classList.contains('visible')) {
+      closeModal();
+    }
+    if (activeEditInput) {
+      activeEditInput = null;
+      renderGrid();
+    }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    undo();
+  }
+});
 
 // ─── Event Listeners ───────────────────────────────────────────────
 
@@ -1163,8 +733,12 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
   // Test 6: Reject bad clue sum
   assert(solveShikaku([[3,0],[0,0]]) === null, 'bad sum: should return null');
 
-  // Test 7: Reject unsolvable
-  assert(solveShikaku([[2,2],[0,0]]) === null, 'unsolvable: should return null');
+  // Test 7: [[2,2],[0,0]] is actually solvable (two 2x1 rects side by side)
+  const s2x2b = solveShikaku([[2,2],[0,0]]);
+  assert(s2x2b !== null && s2x2b.length === 2, '2x2 two-clue: should have 2 rects');
+
+  // Test 7b: Truly unsolvable — clue 3 in a 2x2 can't form a 1x3 or 3x1
+  assert(solveShikaku([[3,0],[0,1]]) === null, 'unsolvable: should return null');
 
   // Test 8: Generator produces valid grids with correct clue sums
   for (const sz of [3, 4, 5, 6, 7, 8, 10, 15]) {
@@ -1233,26 +807,17 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
   assert(d6.some(r => r.includes('No obvious')), 'diag: valid puzzle reports no structural issue');
 
   // Test 16: clue that can't form any rectangle on grid
-  // 5 in a 2x3 grid: 5 has factors 1x5,5x1 — neither fits in 2x3 if clue is at (0,0)
-  // but sum must equal area=6, so we use a grid where sum is correct
-  // Use a 2x2 grid with clue 3 at (0,0) and clue 1 at (1,1): sum=4=area
-  // 3 needs 1x3 or 3x1 — neither fits in 2x2
   const d_nofit = diagnosePuzzle([[3,0],[0,1]]);
   assert(d_nofit.some(r => r.includes('no possible rectangle')), 'diag: detect clue with no fitting rect');
 
   // Test 17: clue blocked by other clues
-  // 3x1 grid [2, 2, 2]: sum=6=area. Clue 2 at (0,0) can only be 1x2=(0,0)-(0,1) or 2x1 (no rows).
-  // 1x2 at (0,0)-(0,1) contains clue at (0,1). So every rect for (0,0) contains another clue.
-  const d_blocked = diagnosePuzzle([[2,2,2]]);
+  // [[1,2,1,0,1]]: clue 2 at (0,1) — its only rects (1x2) each contain another clue
+  const d_blocked = diagnosePuzzle([[1,2,1,0,1]]);
   assert(d_blocked.some(r => r.includes('every possible rectangle contains another clue')),
     'diag: detect clue blocked by neighbors');
 
   // Test 18: unreachable cells
-  // 3x3 grid with one clue of 9 at corner: should be solvable (9=3x3)
-  // But: 3x3 with clue 4 at (0,0) and clue 5 at (2,2) — some cells may be unreachable
   const d_reach = diagnosePuzzle([[4,0,0],[0,0,0],[0,0,5]]);
-  // 4 at (0,0): rects of area 4 (1x4 no, 4x1 no, 2x2 yes). 2x2 from (0,0)-(1,1).
-  // 5 at (2,2): rects of area 5 (1x5 no, 5x1 no). No valid rect! → caught as "no possible rect"
   assert(d_reach.some(r => r.includes('no possible rectangle') || r.includes('cannot be reached')),
     'diag: detect unreachable cells or impossible rect');
 

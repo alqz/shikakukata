@@ -1,0 +1,92 @@
+:root {
+  --cell-size: 36px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, sans-serif;
+  background: #111;
+  color: #ccc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  user-select: none;
+}
+
+h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 2px; color: #e94560; }
+
+.subtitle { font-size: 0.8rem; color: #777; margin-bottom: 16px; }
+
+.controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; }
+
+button { background: #222; color: #ccc; border: 1px solid #444; padding: 6px 14px; cursor: pointer; font-size: 0.85rem; }
+button:hover { background: #333; }
+button.active { border-color: #e94560; color: #e94560; }
+
+.size-controls { display: flex; gap: 4px; align-items: center; }
+.size-controls span { font-size: 0.85rem; color: #777; min-width: 40px; text-align: center; }
+
+.status { font-size: 0.85rem; margin-bottom: 10px; min-height: 1.2em; color: #777; }
+.status.win { color: #4ecdc4; font-weight: 600; }
+.status.error { color: #e94560; }
+
+.timer { font-size: 0.8rem; color: #555; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+
+#grid-container { position: relative; margin-bottom: 16px; }
+
+#grid { display: grid; background: #000; gap: 1px; border: 1px solid #444; }
+
+.cell {
+  width: var(--cell-size); height: var(--cell-size);
+  background: #1a1a1a;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; font-weight: 600;
+  cursor: crosshair;
+}
+.cell.clue { color: #fff; }
+.cell.empty { color: transparent; }
+.cell.editable { cursor: pointer; color: #f7dc6f; }
+.cell.editable:hover { background: #252525; }
+
+.rect-overlay { position: absolute; border: 2px solid; pointer-events: none; z-index: 10; }
+.rect-overlay.invalid { border-style: dashed; }
+
+#selection-overlay {
+  position: absolute;
+  background: rgba(233, 69, 96, 0.2);
+  pointer-events: none;
+  z-index: 5;
+  display: none;
+}
+
+.cell-input {
+  width: 100%; height: 100%;
+  background: #222;
+  color: #f7dc6f;
+  border: 1px solid #e94560;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0;
+  outline: none;
+}
+/* Hide number input spinners */
+.cell-input::-webkit-inner-spin-button,
+.cell-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.cell-input { -moz-appearance: textfield; }
+
+.instructions { max-width: 480px; text-align: center; font-size: 0.78rem; color: #555; line-height: 1.5; margin-top: 8px; }
+.instructions a { color: #777; text-decoration: underline; }
+.instructions a:hover { color: #ccc; }
+
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.visible { display: flex; }
+
+.modal { background: #1a1a1a; border: 1px solid #444; padding: 20px; max-width: 480px; width: 90%; }
+.modal h2 { font-size: 1rem; margin-bottom: 10px; }
+.modal p { font-size: 0.8rem; color: #777; margin-bottom: 10px; line-height: 1.4; }
+.modal textarea { width: 100%; height: 140px; background: #111; color: #ccc; border: 1px solid #444; padding: 8px; font-family: monospace; font-size: 0.85rem; resize: vertical; margin-bottom: 10px; }
+.modal .modal-buttons { display: flex; gap: 6px; justify-content: flex-end; }
+.modal .error-msg { color: #e94560; font-size: 0.8rem; margin-bottom: 6px; min-height: 1.1em; }

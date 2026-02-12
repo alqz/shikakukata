@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shikakukata — How the Solver Works</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { max-width: 640px; text-align: left; padding: 24px 20px; }
+  h1 { margin-bottom: 6px; }
+  h2 { font-size: 1.1rem; font-weight: 500; color: #e94560; margin: 28px 0 8px; }
+  h3 { font-size: 0.95rem; font-weight: 500; color: #ccc; margin: 18px 0 6px; }
+  p, li { font-size: 0.85rem; color: #999; line-height: 1.6; margin-bottom: 10px; }
+  ul, ol { padding-left: 20px; margin-bottom: 12px; }
+  code { background: #1a1a1a; color: #f7dc6f; padding: 1px 5px; font-size: 0.82rem; }
+  pre { background: #1a1a1a; border: 1px solid #333; padding: 12px; overflow-x: auto;
+        font-size: 0.8rem; color: #ccc; line-height: 1.5; margin-bottom: 14px; }
+  a { color: #e94560; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .back { font-size: 0.82rem; margin-bottom: 16px; display: inline-block; }
+  .diagram { background: #1a1a1a; border: 1px solid #333; padding: 12px; font-family: monospace;
+             font-size: 0.8rem; line-height: 1.4; color: #ccc; margin-bottom: 14px; white-space: pre; }
+  .highlight { color: #e94560; }
+  .opt-label { display: inline-block; background: #e94560; color: #111; font-size: 0.7rem;
+               font-weight: 600; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<a href="index.html" class="back">&larr; Back to game</a>
+<h1>SHIKAKUKATA</h1>
+<p class="subtitle">How the Solver Algorithm Works</p>
+
+<h2>The Puzzle</h2>
+<p>
+  Shikaku is a logic puzzle played on a rectangular grid. Some cells contain numbers (clues).
+  The goal is to divide the entire grid into non-overlapping rectangles such that each rectangle
+  contains <strong>exactly one clue</strong>, and that clue's value equals the rectangle's <strong>area</strong>.
+</p>
+
+<div class="diagram">┌───────┬───┐
+│ <span class="highlight">6</span>     │   │
+│       │ <span class="highlight">4</span> │
+├───┬───┤   │
+│   │ <span class="highlight">5</span> │   │
+│<span class="highlight">4</span> │   ├───┤
+│   │   │<span class="highlight">6</span> │
+├───┴───┤   │
+│       │   │
+└───────┴───┘</div>
+
+<p>
+  Shikaku is NP-complete in general, meaning there's no known polynomial-time algorithm that
+  solves all instances. Our solver uses backtracking search with several optimizations that make
+  it fast in practice for typical puzzle sizes.
+</p>
+
+<h2>Step 1: Rectangle Enumeration</h2>
+<p>
+  For each clue with value <code>v</code> at position <code>(r, c)</code>, we enumerate every
+  possible rectangle that:
+</p>
+<ol>
+  <li>Has area exactly equal to <code>v</code></li>
+  <li>Contains the cell <code>(r, c)</code></li>
+  <li>Fits within the grid boundaries</li>
+</ol>
+<p>
+  We do this by iterating over all factor pairs of <code>v</code>. For each pair
+  <code>(h, w)</code> where <code>h &times; w = v</code>, we slide an <code>h &times; w</code>
+  window across all positions that include <code>(r, c)</code>:
+</p>
+<pre>for h from 1 to v:
+    if v is not divisible by h: skip
+    w = v / h
+    for r1 from (r - h + 1) to r:
+        for c1 from (c - w + 1) to c:
+            r2 = r1 + h - 1
+            c2 = c1 + w - 1
+            if rectangle (r1, c1, r2, c2) is within grid:
+                add to candidate list</pre>
+
+<h2>Step 2: Pre-filtering</h2>
+<p>
+  <span class="opt-label">OPT</span>
+  Before the search begins, we remove candidate rectangles that <strong>contain another clue</strong>.
+  Since each rectangle must contain exactly one clue, any rectangle overlapping a second clue is
+  immediately invalid. This is done once upfront, saving many checks during backtracking.
+</p>
+<p>
+  For a 15&times;15 grid, this typically eliminates 30&ndash;60% of candidates.
+</p>
+
+<h2>Step 3: Backtracking Search</h2>
+<p>
+  The solver uses depth-first backtracking. At each step it:
+</p>
+<ol>
+  <li>Picks an unplaced clue</li>
+  <li>Tries each of that clue's candidate rectangles</li>
+  <li>If a placement is valid (no overlap with already-placed rectangles), places it and recurses</li>
+  <li>If the recursion fails, undoes the placement and tries the next candidate</li>
+  <li>If all candidates are exhausted, backtracks to the previous clue</li>
+</ol>
+
+<h3>What makes a placement valid?</h3>
+<p>
+  A rectangle can be placed if every cell it covers is currently uncovered (not occupied by
+  a previously placed rectangle). We check this with a <code>covered</code> grid that tracks
+  which clue index occupies each cell, or <code>-1</code> for uncovered.
+</p>
+
+<h2>Step 4: Dynamic MRV Ordering</h2>
+<p>
+  <span class="opt-label">OPT</span>
+  The order in which we pick clues to place matters enormously. We use the
+  <strong>Minimum Remaining Values (MRV)</strong> heuristic: at each step, pick the unplaced
+  clue with the <em>fewest</em> valid (non-overlapping) rectangles remaining.
+</p>
+<p>
+  The intuition: a clue with only 1 or 2 remaining options is highly constrained &mdash; if we delay it,
+  we'll explore many branches that ultimately fail at that clue. By handling it first, we prune
+  the search tree early.
+</p>
+<p>
+  Crucially, our MRV is <strong>dynamic</strong> &mdash; we recompute remaining options at every step,
+  not just once at the start. As rectangles are placed and cells become covered, remaining options
+  for other clues shrink. This adaptive ordering can reduce the search tree by orders of magnitude
+  compared to a static ordering.
+</p>
+
+<div class="diagram">Static MRV:  pick order fixed at start
+  Clue A (3 options) → Clue B (5 options) → Clue C (2 options)
+                                              ↑ too late!
+
+Dynamic MRV: re-evaluate at each step
+  Step 1: Clue C (2 options) ← most constrained
+  Step 2: Clue A (1 option)  ← after placing C, A is forced
+  Step 3: Clue B (3 options) ← easy</div>
+
+<h2>Step 5: Forward Checking</h2>
+<p>
+  <span class="opt-label">OPT</span>
+  After each placement, before recursing deeper, we check whether a solution is still possible.
+  Forward checking verifies two things:
+</p>
+<ol>
+  <li>
+    <strong>Clue feasibility:</strong> every unplaced clue still has at least one valid rectangle
+    (one that doesn't overlap any placed rectangles). If any clue has zero options, we can
+    immediately backtrack without exploring further.
+  </li>
+  <li>
+    <strong>Dead cell detection:</strong> every uncovered cell is reachable by at least one
+    remaining valid rectangle from some unplaced clue. If a cell is "orphaned" &mdash; no
+    remaining clue can possibly reach it &mdash; the current partial solution can never lead
+    to a complete covering.
+  </li>
+</ol>
+<p>
+  Together these checks catch many dead-end branches early. The cost of checking is modest
+  compared to the branches it prunes.
+</p>
+
+<div class="diagram">After placing a rectangle:
+
+  ┌───────┬───┐
+  │ placed│ ? │     Clue at ? has 0 valid rects left
+  │       │   │     → <span class="highlight">backtrack immediately</span>
+  ├───────┤   │
+  │ . . . │   │     Cell . is unreachable by any remaining clue
+  └───────┴───┘     → <span class="highlight">backtrack immediately</span></div>
+
+<h2>Step 6: Async Chunking</h2>
+<p>
+  <span class="opt-label">OPT</span>
+  For the interactive solver (the "Solve" button), the algorithm runs asynchronously using
+  <strong>chunked execution</strong>. The backtracker uses an explicit stack instead of the
+  call stack, and after every 5,000 iterations, yields control back to the browser via
+  <code>setTimeout(0)</code>. This keeps the UI responsive &mdash; the "Solving..." animation
+  and timer continue to update even during long solves.
+</p>
+
+<h2>Puzzle Generation</h2>
+<p>
+  The generator creates puzzles by partitioning the grid into random rectangles, then placing
+  a clue (equal to the rectangle's area) at a random position within each rectangle.
+</p>
+<ol>
+  <li>Find the first uncovered cell (scanning left-to-right, top-to-bottom)</li>
+  <li>Enumerate all rectangles anchored at that cell that fit on the grid</li>
+  <li>Randomly select one (preferring medium-sized rectangles for interesting puzzles)</li>
+  <li>Mark those cells as used and record the rectangle</li>
+  <li>Repeat until the entire grid is covered</li>
+</ol>
+<p>
+  Because the generator builds a valid partition directly, every generated puzzle is guaranteed
+  to have at least one solution.
+</p>
+
+<h2>Diagnostics</h2>
+<p>
+  When the solver finds no solution, a diagnostic pass analyzes the puzzle to explain why:
+</p>
+<ul>
+  <li><strong>Clue sum mismatch:</strong> the sum of all clue values doesn't equal the grid area</li>
+  <li><strong>Impossible clues:</strong> a clue whose value has no factorization fitting on the grid</li>
+  <li><strong>Blocked clues:</strong> every possible rectangle for a clue contains another clue</li>
+  <li><strong>Unreachable cells:</strong> cells that no clue's rectangle can possibly cover</li>
+  <li><strong>Adjacent 1s:</strong> two adjacent clues of value 1 (each needs a 1&times;1 rectangle, leaving the other's cell uncoverable)</li>
+</ul>
+
+<h2>Complexity</h2>
+<p>
+  In the worst case, the solver explores an exponential number of branches. For a grid with
+  <code>k</code> clues, each having up to <code>m</code> candidate rectangles, the worst-case
+  search space is <code>O(m<sup>k</sup>)</code>. However, the optimizations above (pre-filtering,
+  dynamic MRV, forward checking, dead cell detection) typically reduce the effective branching
+  factor dramatically, making most puzzles solvable in well under a second up to about 15&times;15,
+  and in a few seconds for larger grids.
+</p>
+
+<p style="margin-top: 32px;">
+  <a href="index.html">&larr; Back to game</a>
+</p>
+
+</body>
+</html>
