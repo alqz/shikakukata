@@ -469,17 +469,6 @@ function diagnosePuzzle(grid) {
     reasons.push(`${unreachableCells.length} cell(s) cannot be reached by any clue's rectangle: ${shown}.`);
   }
 
-  // Check for adjacent clues that are both 1
-  for (let i = 0; i < clues.length; i++) {
-    for (let j = i + 1; j < clues.length; j++) {
-      const [r1, c1, v1] = clues[i];
-      const [r2, c2, v2] = clues[j];
-      if (v1 === 1 && v2 === 1 && Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1) {
-        reasons.push(`Two adjacent clues of 1 at (${r1 + 1},${c1 + 1}) and (${r2 + 1},${c2 + 1}) — both need a 1×1 rectangle, leaving the other's cell uncoverable.`);
-      }
-    }
-  }
-
   if (reasons.length === 0) {
     reasons.push('No obvious structural issue found; the puzzle is valid but the backtracking search found no solution (conflicting constraints).');
   }

@@ -794,11 +794,7 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
   const d2 = diagnosePuzzle([[9,0],[0,0]]);
   assert(d2.some(r => r.includes('Clue sum')), 'diag: detect oversized clue sum');
 
-  // Test 13: adjacent 1s (correct sum but structurally impossible)
-  const d4 = diagnosePuzzle([[1,1,1],[1,1,1]]);
-  assert(d4.some(r => r.includes('adjacent')), 'diag: detect adjacent clues of 1');
-
-  // Test 14: no clues at all
+  // Test 13: no clues at all
   const d_none = diagnosePuzzle([[0,0],[0,0]]);
   assert(d_none.some(r => r.includes('no clues')), 'diag: detect no clues');
 
@@ -826,7 +822,7 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
   assert(d1.length >= 1, 'diag: returns at least one reason');
 
   // Test 20: all reasons are strings
-  for (const reasons of [d1, d4, d_none, d6, d_nofit]) {
+  for (const reasons of [d1, d_none, d6, d_nofit]) {
     assert(reasons.every(r => typeof r === 'string'), 'diag: all reasons are strings');
   }
 

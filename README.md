@@ -36,7 +36,7 @@ The test suite covers:
 - Generator: correct dimensions and clue sums for sizes 3–15
 - Generated puzzles are solvable (sizes 3–7, multiple trials each)
 - Custom puzzle parser: valid input, uneven rows, empty input, non-numbers, trailing separators
-- Diagnostics: bad clue sum, adjacent 1s, no clues, blocked clues, unreachable cells, impossible rectangles
+- Diagnostics: bad clue sum, no clues, blocked clues, unreachable cells, impossible rectangles
 
 ## Dev Notes
 
