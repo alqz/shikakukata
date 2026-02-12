@@ -191,16 +191,70 @@
   The generator creates puzzles by partitioning the grid into random rectangles, then placing
   a clue (equal to the rectangle's area) at a random position within each rectangle.
 </p>
+
+<h3>Greedy Partitioning</h3>
 <ol>
   <li>Find the first uncovered cell (scanning left-to-right, top-to-bottom)</li>
-  <li>Enumerate all rectangles anchored at that cell that fit on the grid</li>
-  <li>Randomly select one (preferring medium-sized rectangles for interesting puzzles)</li>
+  <li>Enumerate all rectangles anchored at that cell that fit on the grid and don't overlap used cells</li>
+  <li>Shuffle candidates randomly (Fisher-Yates), then prefer medium-sized rectangles
+    (area between 2 and <code>max(6, gridArea/4)</code>) for more interesting puzzles</li>
   <li>Mark those cells as used and record the rectangle</li>
   <li>Repeat until the entire grid is covered</li>
 </ol>
 <p>
   Because the generator builds a valid partition directly, every generated puzzle is guaranteed
-  to have at least one solution.
+  to have at least one solution. The clue for each rectangle is placed at a random cell within it.
+</p>
+
+<h3>No-1s Generation</h3>
+<p>
+  The "New (No 1s)" mode generates puzzles where every rectangle has area &ge; 2 &mdash; no
+  single-cell clues. This requires the <code>minArea: 2</code> option, which changes the
+  generator's behavior in two ways:
+</p>
+
+<h3>Isolation Check</h3>
+<p>
+  The key challenge with <code>minArea: 2</code> is avoiding dead ends: if a placed rectangle
+  leaves a neighboring cell with no empty neighbors, that cell can only become a 1&times;1 &mdash;
+  violating the constraint. The <strong>isolation check</strong> prevents this:
+</p>
+<ol>
+  <li>Before placing a candidate rectangle, temporarily mark its cells as used</li>
+  <li>For each empty cell adjacent to the rectangle's border (within 1 cell in all directions):
+    <ul>
+      <li>Check whether that cell has at least one empty neighbor (up, down, left, right)</li>
+      <li>If not, the cell would be isolated &mdash; it can only form a 1&times;1 rect</li>
+    </ul>
+  </li>
+  <li>Undo the temporary marking</li>
+  <li>If any cell would be isolated, reject this candidate</li>
+</ol>
+<pre>function wouldIsolate(r1, c1, r2, c2):
+    temporarily mark rect cells as used
+    for each empty cell (r, c) adjacent to rect border:
+        if no neighbor of (r, c) is empty:
+            undo &rarr; return true  // would isolate
+    undo &rarr; return false  // safe</pre>
+<p>
+  The generator prefers safe candidates (those passing the isolation check), but falls back
+  to the full candidate list if all are rejected &mdash; this avoids getting stuck in rare
+  edge cases.
+</p>
+
+<h3>Retry Mechanism</h3>
+<p>
+  Despite the isolation check, the greedy approach can occasionally get stuck (especially on
+  smaller grids where geometry is more constrained). The generator wraps the partitioning
+  attempt in a retry loop:
+</p>
+<ul>
+  <li>Up to <strong>100 attempts</strong> with the requested <code>minArea</code></li>
+  <li>If all fail, a final fallback generates with <code>minArea: 1</code> to guarantee a result</li>
+</ul>
+<p>
+  In practice, the first attempt succeeds for the vast majority of grids. The retry limit
+  exists as a safety net for rare unlucky random layouts.
 </p>
 
 <h2>Diagnostics</h2>

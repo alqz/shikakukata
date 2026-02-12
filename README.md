@@ -6,10 +6,12 @@ A [Shikaku](https://en.wikipedia.org/wiki/Shikaku) puzzle solver and interactive
 
 | File | Purpose |
 |------|---------|
-| `index.html` | Game UI — grid, input handling, controls, self-tests |
+| `index.html` | HTML shell — grid markup, controls, modal |
+| `game.js` | Game UI — rendering, input handling, controls, mode switching |
 | `solver.js` | Solver engine — backtracking solver, generator, diagnostics, parser |
+| `tests.js` | 220 self-tests (run on page load, output to console) |
 | `style.css` | All styles (`--cell-size` CSS custom property) |
-| `algorithm.html` | How the solver algorithm works |
+| `algorithm.html` | How the solver and generator algorithms work |
 | `shikaku_solver.py` | Standalone command-line solver in Python |
 
 ## Running Tests
@@ -23,9 +25,7 @@ Shikaku tests: all 220 passed
 Headless via Deno:
 
 ```sh
-cat solver.js > /tmp/test.js
-sed -n '/^\/\/ ─── Self-Tests/,/^})();$/p' index.html >> /tmp/test.js
-deno run /tmp/test.js
+cat solver.js tests.js | deno run -
 ```
 
 Coverage: solving (5x5–7x7 with validation), edge cases (1x1, 2x2, non-square grids, all-1s, single-clue, multi-solution, unsolvable), generator (dimensions, clue sums, solvability for sizes 3–15), no-1s generator (no 1-clues, solvability), `getRectangles` correctness, custom parser (valid/invalid inputs, trailing separators), diagnostics (bad sums, no clues, blocked clues, unreachable cells, impossible rects).
@@ -35,7 +35,9 @@ Coverage: solving (5x5–7x7 with validation), edge cases (1x1, 2x2, non-square 
 ### Architecture
 
 - **`solver.js`** — pure logic, no DOM. Exports: `solveShikaku`, `solveShikakuAsync`, `generatePuzzle`, `diagnosePuzzle`, `parseCustomGrid`, `getRectangles`, `shuffle`.
-- **`index.html`** — DOM interaction, event listeners, game state. Loads `solver.js` via `<script>`.
+- **`game.js`** — DOM interaction, event listeners, game state, mode switching (play/edit).
+- **`tests.js`** — 220 self-tests that run on load, verifying solver, generator, parser, and diagnostics.
+- **`index.html`** — HTML shell only. Loads `solver.js`, `game.js`, `tests.js` via `<script>` tags.
 - **`style.css`** — `--cell-size` custom property read by JS for overlay positioning.
 
 ### Solver
@@ -53,7 +55,7 @@ Performance: 15x15 ~2ms, 25x25 ~10ms typical. See `algorithm.html` for details.
 
 ### Generator
 
-Greedy partitioning with randomized rectangle selection, preferring medium-sized rects. The **No 1s** mode (`minArea: 2`) uses an isolation check — before placing a rect, it verifies no neighboring cell would be left without an empty neighbor (which would force a 1x1). Falls back to retry (up to 20 attempts) on rare dead-ends. 25x25 no-1s generation takes ~1ms.
+Greedy partitioning with randomized rectangle selection, preferring medium-sized rects. The **No 1s** mode (`minArea: 2`) uses an isolation check — before placing a rect, it verifies no neighboring cell would be left without an empty neighbor (which would force a 1x1). Falls back to retry (up to 100 attempts) on rare dead-ends. 25x25 no-1s generation takes ~1ms.
 
 ### Accessibility
 
