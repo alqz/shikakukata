@@ -11,7 +11,7 @@
 <h1>SHIKAKUKATA</h1>
 <p class="subtitle">Shikaku Puzzle Game</p>
 
-<div class="controls">
+<div class="controls" id="controls-play">
   <div class="size-controls">
     <button id="btn-smaller" aria-label="Decrease grid size">&minus;</button>
     <span id="size-label">5&times;5</span>
@@ -19,11 +19,23 @@
   </div>
   <button id="btn-new">New Puzzle</button>
   <button id="btn-new-no1s" title="Generate puzzle with no 1-clues">New (No 1s)</button>
-  <button id="btn-custom">Custom</button>
-  <button id="btn-edit">Edit Grid</button>
+  <button id="btn-edit">Edit</button>
+</div>
+<div class="controls" id="controls-play-actions">
   <button id="btn-undo">Undo</button>
-  <button id="btn-clear">Clear</button>
+  <button id="btn-reset">Reset</button>
   <button id="btn-solve">Solve</button>
+</div>
+<div class="controls hidden" id="controls-edit">
+  <div class="size-controls">
+    <button id="btn-smaller-edit" aria-label="Decrease grid size">&minus;</button>
+    <span id="size-label-edit">5&times;5</span>
+    <button id="btn-larger-edit" aria-label="Increase grid size">+</button>
+  </div>
+  <button id="btn-clear">Clear</button>
+  <button id="btn-import">Import</button>
+  <button id="btn-export">Export</button>
+  <button id="btn-done-edit">Done</button>
 </div>
 
 <div class="timer" id="timer">0:00</div>
@@ -42,31 +54,29 @@
   Grids up to 25&times;25 &middot;
   Auto-solver &middot;
   No-1s puzzles &middot;
-  Paste your own puzzle via <strong>Custom</strong> &middot;
-  Edit cells directly via <strong>Edit Grid</strong> &middot;
+  Import/export &middot;
+  Edit cells directly &middot;
   Diagnostics for unsolvable puzzles<br>
   <a href="algorithm.html">How the solver algorithm works</a>
 </div>
 
-<!-- Custom puzzle modal -->
+<!-- Import / Export modal -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <h2 id="modal-title">Enter Custom Puzzle</h2>
-    <p>
+    <h2 id="modal-title">Import Puzzle</h2>
+    <p id="modal-desc">
       Enter numbers separated by spaces, one row per line.
-      Use <strong>0</strong> for empty cells. All rows must have the same length,
-      and the clue values must sum to the total grid area.
+      Use <strong>0</strong> for empty cells. All rows must have the same length.
     </p>
-    <textarea id="custom-input" spellcheck="false" placeholder="0 6 0 0 4
+    <textarea id="modal-textarea" spellcheck="false" placeholder="0 6 0 0 4
 0 0 0 0 0
 0 0 5 0 0
 4 0 0 0 0
 0 0 0 6 0"></textarea>
-    <div class="error-msg" id="custom-error"></div>
+    <div class="error-msg" id="modal-error"></div>
     <div class="modal-buttons">
-      <button id="btn-custom-cancel">Cancel</button>
-      <button id="btn-custom-load">Load &amp; Solve</button>
-      <button id="btn-custom-play">Load &amp; Play</button>
+      <button id="btn-modal-cancel">Cancel</button>
+      <button id="btn-modal-ok">Load</button>
     </div>
   </div>
 </div>
@@ -105,8 +115,12 @@ const gridContainer = document.getElementById('grid-container');
 const statusEl = document.getElementById('status');
 const timerEl = document.getElementById('timer');
 const sizeLabel = document.getElementById('size-label');
+const sizeLabelEdit = document.getElementById('size-label-edit');
 const selectionOverlay = document.getElementById('selection-overlay');
 const selectionArea = document.getElementById('selection-area');
+const controlsPlay = document.getElementById('controls-play');
+const controlsPlayActions = document.getElementById('controls-play-actions');
+const controlsEdit = document.getElementById('controls-edit');
 
 // ─── Rendering ─────────────────────────────────────────────────────
 
@@ -408,85 +422,76 @@ function updateTimer() {
   timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ─── Custom Puzzle ─────────────────────────────────────────────────
+// ─── Modal ────────────────────────────────────────────────────────
 
 const modalOverlay = document.getElementById('modal-overlay');
-const customInput = document.getElementById('custom-input');
-const customError = document.getElementById('custom-error');
+const modalTitle = document.getElementById('modal-title');
+const modalDesc = document.getElementById('modal-desc');
+const modalTextarea = document.getElementById('modal-textarea');
+const modalError = document.getElementById('modal-error');
+const modalOk = document.getElementById('btn-modal-ok');
+let modalMode = 'import'; // 'import' or 'export'
 
-function openModal() {
-  customError.textContent = '';
+function openModal(mode) {
+  modalMode = mode;
+  modalError.textContent = '';
+  if (mode === 'export') {
+    modalTitle.textContent = 'Export Puzzle';
+    modalDesc.textContent = 'Copy the puzzle text below to share it.';
+    modalOk.textContent = 'Copy';
+    modalTextarea.value = gridToText();
+    modalTextarea.readOnly = true;
+  } else {
+    modalTitle.textContent = 'Import Puzzle';
+    modalDesc.innerHTML = 'Enter numbers separated by spaces, one row per line. Use <strong>0</strong> for empty cells. All rows must have the same length.';
+    modalOk.textContent = 'Load';
+    modalTextarea.value = '';
+    modalTextarea.readOnly = false;
+  }
   modalOverlay.classList.add('visible');
-  customInput.focus();
+  modalTextarea.focus();
+  if (mode === 'export') modalTextarea.select();
 }
 
 function closeModal() {
   modalOverlay.classList.remove('visible');
-  document.getElementById('btn-custom').focus();
 }
 
-function loadCustomPuzzle(andSolve) {
-  const parsed = parseCustomGrid(customInput.value);
-  if (parsed.error) {
-    customError.textContent = parsed.error;
+function gridToText() {
+  return grid.map(row => row.join(' ')).join('\n');
+}
+
+function handleModalOk() {
+  if (modalMode === 'export') {
+    navigator.clipboard.writeText(modalTextarea.value).then(() => {
+      modalError.style.color = '#4ecdc4';
+      modalError.textContent = 'Copied to clipboard!';
+      setTimeout(closeModal, 600);
+    }, () => {
+      modalTextarea.select();
+      modalError.style.color = '';
+      modalError.textContent = 'Copy failed — select and copy manually.';
+    });
     return;
   }
-
-  customError.textContent = '';
+  // Import
+  const parsed = parseCustomGrid(modalTextarea.value);
+  if (parsed.error) {
+    modalError.style.color = '';
+    modalError.textContent = parsed.error;
+    return;
+  }
   closeModal();
-
   grid = parsed.grid;
   gridSize = Math.max(grid.length, grid[0].length);
-  sizeLabel.textContent = `${grid[0].length}\u00d7${grid.length}`;
-  playerRects = [];
-  undoStack = [];
-  nextColorIdx = 0;
-  solved = false;
-  hasClues = true;
-  timerStart = null;
-  clearInterval(timerInterval);
-  timerEl.textContent = '0:00';
-  statusEl.textContent = 'Custom puzzle loaded. ' + (andSolve ? 'Solving...' : 'Draw rectangles to solve.');
+  syncSizeLabels();
+  statusEl.textContent = 'Puzzle imported. Click cells to edit, or press Done to play.';
   statusEl.className = 'status';
   renderGrid();
-
-  if (andSolve) {
-    solving = true;
-    const solveStart = Date.now();
-    const dots = ['Solving.', 'Solving..', 'Solving...'];
-    let dotIdx = 0;
-    const animInterval = setInterval(() => {
-      const elapsed = ((Date.now() - solveStart) / 1000).toFixed(0);
-      statusEl.textContent = `${dots[dotIdx++ % 3]} (${elapsed}s)`;
-    }, 400);
-
-    solveShikakuAsync(grid, () => {}).then(result => {
-      clearInterval(animInterval);
-      solving = false;
-      const elapsed = ((Date.now() - solveStart) / 1000).toFixed(1);
-      if (!result) {
-        const reasons = diagnosePuzzle(grid);
-        statusEl.textContent = `No solution found (${elapsed}s): ${reasons[0]}`;
-        statusEl.className = 'status error';
-        console.warn('Puzzle diagnosis:', reasons);
-        return;
-      }
-      playerRects = result.map(({ rect }, i) => ({
-        r1: rect[0], c1: rect[1], r2: rect[2], c2: rect[3],
-        color: COLORS[i % COLORS.length],
-      }));
-      renderOverlays();
-      solved = true;
-      statusEl.textContent = `Solved in ${elapsed}s!`;
-      statusEl.className = 'status win';
-    });
-  }
 }
 
-document.getElementById('btn-custom').addEventListener('click', openModal);
-document.getElementById('btn-custom-cancel').addEventListener('click', closeModal);
-document.getElementById('btn-custom-load').addEventListener('click', () => loadCustomPuzzle(true));
-document.getElementById('btn-custom-play').addEventListener('click', () => loadCustomPuzzle(false));
+document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
+modalOk.addEventListener('click', handleModalOk);
 modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) closeModal();
 });
@@ -495,26 +500,51 @@ modalOverlay.addEventListener('click', (e) => {
 
 document.getElementById('btn-new').addEventListener('click', () => newPuzzle());
 document.getElementById('btn-new-no1s').addEventListener('click', () => newPuzzle({ minArea: 2 }));
-document.getElementById('btn-edit').addEventListener('click', toggleEditMode);
+document.getElementById('btn-edit').addEventListener('click', enterEditMode);
 document.getElementById('btn-undo').addEventListener('click', undo);
-document.getElementById('btn-clear').addEventListener('click', clearRects);
+document.getElementById('btn-reset').addEventListener('click', resetRects);
 document.getElementById('btn-solve').addEventListener('click', autoSolve);
 document.getElementById('btn-smaller').addEventListener('click', () => changeSize(-1));
 document.getElementById('btn-larger').addEventListener('click', () => changeSize(1));
+document.getElementById('btn-smaller-edit').addEventListener('click', () => changeSize(-1));
+document.getElementById('btn-larger-edit').addEventListener('click', () => changeSize(1));
+document.getElementById('btn-clear').addEventListener('click', clearBoard);
+document.getElementById('btn-import').addEventListener('click', () => openModal('import'));
+document.getElementById('btn-export').addEventListener('click', () => openModal('export'));
+document.getElementById('btn-done-edit').addEventListener('click', exitEditMode);
+
+function syncSizeLabels() {
+  const text = `${gridSize}\u00d7${gridSize}`;
+  sizeLabel.textContent = text;
+  sizeLabelEdit.textContent = text;
+}
+
+function setMode(mode) {
+  editMode = (mode === 'edit');
+  controlsPlay.classList.toggle('hidden', editMode);
+  controlsPlayActions.classList.toggle('hidden', editMode);
+  controlsEdit.classList.toggle('hidden', !editMode);
+  timerEl.classList.toggle('hidden', editMode);
+  updateButtons();
+}
 
 function updateButtons() {
+  // Play mode buttons
   document.getElementById('btn-undo').disabled = undoStack.length === 0 || solved || solving;
-  document.getElementById('btn-clear').disabled = playerRects.length === 0 || solved || solving;
+  document.getElementById('btn-reset').disabled = playerRects.length === 0 || solved || solving;
   document.getElementById('btn-solve').disabled = solving || solved || !hasClues;
   document.getElementById('btn-new').disabled = solving;
   document.getElementById('btn-new-no1s').disabled = solving;
-  document.getElementById('btn-custom').disabled = solving;
   document.getElementById('btn-edit').disabled = solving;
   document.getElementById('btn-smaller').disabled = solving || gridSize <= 3;
   document.getElementById('btn-larger').disabled = solving || gridSize >= 25;
+  // Edit mode buttons
+  document.getElementById('btn-smaller-edit').disabled = gridSize <= 3;
+  document.getElementById('btn-larger-edit').disabled = gridSize >= 25;
 }
 
 function newPuzzle(opts) {
+  if (editMode) exitEditMode();
   grid = generatePuzzle(gridSize, gridSize, opts);
   playerRects = [];
   undoStack = [];
@@ -537,7 +567,7 @@ function undo() {
   updateStatus();
 }
 
-function clearRects() {
+function resetRects() {
   if (playerRects.length === 0 || solved) return;
   undoStack.push([...playerRects.map(r => ({ ...r }))]);
   playerRects = [];
@@ -593,67 +623,84 @@ async function autoSolve() {
 
 function changeSize(delta) {
   gridSize = Math.max(3, Math.min(25, gridSize + delta));
-  sizeLabel.textContent = `${gridSize}\u00d7${gridSize}`;
-  resetGrid();
-}
-
-function resetGrid() {
-  grid = Array.from({ length: gridSize }, () => new Array(gridSize).fill(0));
-  playerRects = [];
-  undoStack = [];
-  nextColorIdx = 0;
-  solved = false;
-  hasClues = false;
-  timerStart = null;
-  clearInterval(timerInterval);
-  timerEl.textContent = '0:00';
-  statusEl.textContent = 'Choose a puzzle type to begin, or use Edit Grid to create your own.';
-  statusEl.className = 'status';
-  renderGrid();
+  syncSizeLabels();
+  if (editMode) {
+    // Resize the grid, preserving existing clues that fit
+    const oldGrid = grid;
+    grid = Array.from({ length: gridSize }, (_, r) =>
+      Array.from({ length: gridSize }, (_, c) =>
+        (r < oldGrid.length && c < oldGrid[0].length) ? oldGrid[r][c] : 0
+      )
+    );
+    renderGrid();
+  } else {
+    // In play mode, reset to empty grid
+    grid = Array.from({ length: gridSize }, () => new Array(gridSize).fill(0));
+    playerRects = [];
+    undoStack = [];
+    nextColorIdx = 0;
+    solved = false;
+    hasClues = false;
+    timerStart = null;
+    clearInterval(timerInterval);
+    timerEl.textContent = '0:00';
+    statusEl.textContent = 'Choose a puzzle type or press Edit to create your own.';
+    statusEl.className = 'status';
+    renderGrid();
+  }
   updateButtons();
 }
 
 // ─── Edit Mode ─────────────────────────────────────────────────────
 
-function toggleEditMode() {
-  if (solving) return;
-  editMode = !editMode;
-  const btn = document.getElementById('btn-edit');
-  if (editMode) {
-    btn.classList.add('active');
-    playerRects = [];
-    undoStack = [];
-    nextColorIdx = 0;
-    solved = false;
-    timerStart = null;
-    clearInterval(timerInterval);
-    timerEl.textContent = '0:00';
-    statusEl.textContent = 'Edit mode: click cells to set clue numbers (0 to clear). Click "Edit Grid" again when done.';
+function enterEditMode() {
+  if (solving || editMode) return;
+  editMode = true;
+  playerRects = [];
+  undoStack = [];
+  nextColorIdx = 0;
+  solved = false;
+  timerStart = null;
+  clearInterval(timerInterval);
+  statusEl.textContent = 'Click cells to set clue numbers. Press Done when finished.';
+  statusEl.className = 'status';
+  setMode('edit');
+  renderGrid();
+}
+
+function exitEditMode() {
+  if (!editMode) return;
+  commitEditInput();
+  editMode = false;
+  const rows = grid.length;
+  const cols = grid[0].length;
+  let clueSum = 0;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      clueSum += grid[r][c];
+  const area = rows * cols;
+  hasClues = clueSum > 0;
+  if (clueSum === 0) {
+    statusEl.textContent = 'No clues on the board. Generate a puzzle or press Edit.';
     statusEl.className = 'status';
-    renderGrid();
+  } else if (clueSum !== area) {
+    statusEl.textContent = `Clue sum (${clueSum}) \u2260 grid area (${area}). Puzzle may not be solvable.`;
+    statusEl.className = 'status error';
   } else {
-    btn.classList.remove('active');
-    commitEditInput();
-    const rows = grid.length;
-    const cols = grid[0].length;
-    let clueSum = 0;
-    for (let r = 0; r < rows; r++)
-      for (let c = 0; c < cols; c++)
-        clueSum += grid[r][c];
-    const area = rows * cols;
-    hasClues = clueSum > 0;
-    if (clueSum === 0) {
-      statusEl.textContent = 'Grid has no clues. Add numbers or generate a new puzzle.';
-      statusEl.className = 'status error';
-    } else if (clueSum !== area) {
-      statusEl.textContent = `Clue sum (${clueSum}) does not equal grid area (${area}). Puzzle may not be solvable.`;
-      statusEl.className = 'status error';
-    } else {
-      statusEl.textContent = 'Custom puzzle ready. Draw rectangles to solve, or press Solve.';
-      statusEl.className = 'status';
-    }
-    renderGrid();
+    statusEl.textContent = 'Puzzle ready. Draw rectangles to solve, or press Solve.';
+    statusEl.className = 'status';
   }
+  setMode('play');
+  renderGrid();
+}
+
+function clearBoard() {
+  for (let r = 0; r < grid.length; r++)
+    for (let c = 0; c < grid[0].length; c++)
+      grid[r][c] = 0;
+  statusEl.textContent = 'Board cleared. Click cells to set clue numbers.';
+  statusEl.className = 'status';
+  renderGrid();
 }
 
 function commitEditInput() {
@@ -709,8 +756,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (modalOverlay.classList.contains('visible')) {
       closeModal();
-    }
-    if (activeEditInput) {
+    } else if (activeEditInput) {
       activeEditInput = null;
       renderGrid();
     }
