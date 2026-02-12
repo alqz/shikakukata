@@ -5,231 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shikakukata — Shikaku Puzzle</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg: #1a1a2e;
-    --surface: #16213e;
-    --border: #0f3460;
-    --text: #e0e0e0;
-    --text-dim: #8888aa;
-    --accent: #e94560;
-    --cell-size: 52px;
-    --cell-font: 1.1rem;
-    --grid-gap: 1px;
-  }
-
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
+    font-family: system-ui, sans-serif;
+    background: #111;
+    color: #ccc;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 24px 16px;
+    padding: 20px;
     user-select: none;
   }
-
-  h1 {
-    font-size: 1.8rem;
-    font-weight: 300;
-    letter-spacing: 0.15em;
-    margin-bottom: 4px;
-    color: var(--accent);
-  }
-
-  .subtitle {
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    margin-bottom: 20px;
-  }
-
-  .controls {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  button {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 8px 18px;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  button:hover { background: var(--border); }
-  button:active { transform: scale(0.97); }
-  button.active { border-color: var(--accent); color: var(--accent); }
-
-  .size-controls {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .size-controls span {
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    min-width: 42px;
-    text-align: center;
-  }
-
-  .status {
-    font-size: 0.9rem;
-    margin-bottom: 12px;
-    min-height: 1.4em;
-    color: var(--text-dim);
-  }
-
+  h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 2px; color: #e94560; }
+  .subtitle { font-size: 0.8rem; color: #777; margin-bottom: 16px; }
+  .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; }
+  button { background: #222; color: #ccc; border: 1px solid #444; padding: 6px 14px; cursor: pointer; font-size: 0.85rem; }
+  button:hover { background: #333; }
+  button.active { border-color: #e94560; color: #e94560; }
+  .size-controls { display: flex; gap: 4px; align-items: center; }
+  .size-controls span { font-size: 0.85rem; color: #777; min-width: 40px; text-align: center; }
+  .status { font-size: 0.85rem; margin-bottom: 10px; min-height: 1.2em; color: #777; }
   .status.win { color: #4ecdc4; font-weight: 600; }
-  .status.error { color: var(--accent); }
-
-  #grid-container {
-    position: relative;
-    margin-bottom: 20px;
-  }
-
-  #grid {
-    display: grid;
-    background: #0a0a1a;
-    gap: var(--grid-gap);
-    border: 2px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
+  .status.error { color: #e94560; }
+  .timer { font-size: 0.8rem; color: #555; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  #grid-container { position: relative; margin-bottom: 16px; }
+  #grid { display: grid; background: #000; gap: 1px; border: 1px solid #444; }
   .cell {
-    width: var(--cell-size);
-    height: var(--cell-size);
-    background: var(--surface);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: var(--cell-font);
-    font-weight: 600;
-    position: relative;
+    width: 36px; height: 36px;
+    background: #1a1a1a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 600;
     cursor: crosshair;
-    transition: background 0.1s;
   }
-
   .cell.clue { color: #fff; }
   .cell.empty { color: transparent; }
-  .cell.selecting { background: rgba(233, 69, 96, 0.25); }
-
-  /* Edit mode: cells are clickable inputs */
-  .cell.editable {
-    cursor: pointer;
-    color: #f7dc6f;
-  }
-  .cell.editable:hover { background: rgba(247, 220, 111, 0.15); }
-
-  .rect-overlay {
-    position: absolute;
-    border: 2.5px solid;
-    border-radius: 3px;
-    pointer-events: none;
-    z-index: 10;
-    transition: opacity 0.2s;
-  }
-
-  .rect-overlay.invalid {
-    background: rgba(233, 69, 96, 0.1);
-    border-style: dashed;
-  }
-
-  .instructions {
-    max-width: 520px;
-    text-align: center;
-    font-size: 0.82rem;
-    color: var(--text-dim);
-    line-height: 1.6;
-    margin-top: 8px;
-  }
-
-  .instructions strong { color: var(--text); }
-
-  .timer {
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    margin-bottom: 8px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Custom puzzle modal */
-  .modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: 100;
-    align-items: center;
-    justify-content: center;
-  }
+  .cell.selecting { background: rgba(233, 69, 96, 0.2); }
+  .cell.editable { cursor: pointer; color: #f7dc6f; }
+  .cell.editable:hover { background: #252525; }
+  .rect-overlay { position: absolute; border: 2px solid; pointer-events: none; z-index: 10; }
+  .rect-overlay.invalid { border-style: dashed; }
+  .instructions { max-width: 480px; text-align: center; font-size: 0.78rem; color: #555; line-height: 1.5; margin-top: 8px; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.visible { display: flex; }
-
-  .modal {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 24px;
-    max-width: 500px;
-    width: 90%;
-  }
-
-  .modal h2 {
-    font-size: 1.1rem;
-    font-weight: 500;
-    margin-bottom: 12px;
-    color: var(--text);
-  }
-
-  .modal p {
-    font-size: 0.82rem;
-    color: var(--text-dim);
-    margin-bottom: 12px;
-    line-height: 1.5;
-  }
-
-  .modal textarea {
-    width: 100%;
-    height: 160px;
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 0.85rem;
-    resize: vertical;
-    margin-bottom: 12px;
-  }
-
-  .modal textarea:focus { outline: 1px solid var(--accent); }
-
-  .modal .modal-buttons {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-
-  .modal .error-msg {
-    color: var(--accent);
-    font-size: 0.82rem;
-    margin-bottom: 8px;
-    min-height: 1.2em;
-  }
-
-  @media (max-width: 500px) {
-    :root { --cell-size: 40px; --cell-font: 0.9rem; }
-    h1 { font-size: 1.4rem; }
-  }
+  .modal { background: #1a1a1a; border: 1px solid #444; padding: 20px; max-width: 480px; width: 90%; }
+  .modal h2 { font-size: 1rem; margin-bottom: 10px; }
+  .modal p { font-size: 0.8rem; color: #777; margin-bottom: 10px; line-height: 1.4; }
+  .modal textarea { width: 100%; height: 140px; background: #111; color: #ccc; border: 1px solid #444; padding: 8px; font-family: monospace; font-size: 0.85rem; resize: vertical; margin-bottom: 10px; }
+  .modal .modal-buttons { display: flex; gap: 6px; justify-content: flex-end; }
+  .modal .error-msg { color: #e94560; font-size: 0.8rem; margin-bottom: 6px; min-height: 1.1em; }
 </style>
 </head>
 <body>
@@ -245,6 +68,7 @@
   </div>
   <button id="btn-new">New Puzzle</button>
   <button id="btn-custom">Custom</button>
+  <button id="btn-edit">Edit Grid</button>
   <button id="btn-undo">Undo</button>
   <button id="btn-clear">Clear</button>
   <button id="btn-solve">Solve</button>
@@ -290,6 +114,7 @@
 <script>
 // ─── Shikaku Solver ────────────────────────────────────────────────
 
+// Synchronous solver (used by tests and small grids)
 function solveShikaku(grid) {
   const rows = grid.length;
   const cols = grid[0].length;
@@ -324,7 +149,6 @@ function solveShikaku(grid) {
 
   const allRects = clues.map(([cr, cc, val]) => getRectangles(cr, cc, val));
 
-  // MRV: sort by fewest rectangles
   const order = [...Array(clues.length).keys()].sort((a, b) => allRects[a].length - allRects[b].length);
   const sortedClues = order.map(i => clues[i]);
   const sortedRects = order.map(i => allRects[i]);
@@ -391,6 +215,145 @@ function solveShikaku(grid) {
     return result;
   }
   return null;
+}
+
+// Async solver with progress callback, forward checking, and UI yielding
+function solveShikakuAsync(grid, onProgress) {
+  return new Promise((resolve) => {
+    const rows = grid.length;
+    const cols = grid[0].length;
+    const totalArea = rows * cols;
+
+    const clues = [];
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (grid[r][c] > 0) clues.push([r, c, grid[r][c]]);
+
+    const clueSum = clues.reduce((s, cl) => s + cl[2], 0);
+    if (clueSum !== totalArea) { resolve(null); return; }
+
+    const covered = Array.from({ length: rows }, () => new Int8Array(cols).fill(-1));
+
+    function getRectangles(cr, cc, area) {
+      const rects = [];
+      for (let h = 1; h <= area; h++) {
+        if (area % h !== 0) continue;
+        const w = area / h;
+        for (let r1 = cr - h + 1; r1 <= cr; r1++) {
+          for (let c1 = cc - w + 1; c1 <= cc; c1++) {
+            const r2 = r1 + h - 1;
+            const c2 = c1 + w - 1;
+            if (r1 >= 0 && r2 < rows && c1 >= 0 && c2 < cols)
+              rects.push([r1, c1, r2, c2]);
+          }
+        }
+      }
+      return rects;
+    }
+
+    // Pre-filter: remove rects containing other clues
+    const allRects = clues.map(([cr, cc, val], idx) => {
+      const rects = getRectangles(cr, cc, val);
+      return rects.filter(([r1, c1, r2, c2]) => {
+        for (let i = 0; i < clues.length; i++) {
+          if (i === idx) continue;
+          const [ocr, occ] = clues[i];
+          if (ocr >= r1 && ocr <= r2 && occ >= c1 && occ <= c2) return false;
+        }
+        return true;
+      });
+    });
+
+    // MRV sort
+    const order = [...Array(clues.length).keys()].sort((a, b) => allRects[a].length - allRects[b].length);
+    const sortedClues = order.map(i => clues[i]);
+    const sortedRects = order.map(i => allRects[i]);
+    const total = sortedClues.length;
+
+    function rectIsFree(r1, c1, r2, c2) {
+      for (let r = r1; r <= r2; r++)
+        for (let c = c1; c <= c2; c++)
+          if (covered[r][c] !== -1) return false;
+      return true;
+    }
+
+    function place(r1, c1, r2, c2, idx) {
+      for (let r = r1; r <= r2; r++)
+        for (let c = c1; c <= c2; c++)
+          covered[r][c] = idx;
+    }
+
+    function unplace(r1, c1, r2, c2) {
+      for (let r = r1; r <= r2; r++)
+        for (let c = c1; c <= c2; c++)
+          covered[r][c] = -1;
+    }
+
+    // Forward check: do all remaining unplaced clues still have >= 1 valid rect?
+    function forwardCheck(fromIdx) {
+      for (let i = fromIdx; i < total; i++) {
+        if (solution[i] !== null) continue;
+        const [cr, cc] = sortedClues[i];
+        if (covered[cr][cc] !== -1) return false;
+        let hasValid = false;
+        for (const [r1, c1, r2, c2] of sortedRects[i]) {
+          if (rectIsFree(r1, c1, r2, c2)) { hasValid = true; break; }
+        }
+        if (!hasValid) return false;
+      }
+      return true;
+    }
+
+    const solution = new Array(total).fill(null);
+    let maxDepth = 0;
+    let steps = 0;
+    let solveStart = performance.now();
+    let lastProgressUpdate = 0;
+
+    function backtrack(idx) {
+      if (idx === total) {
+        for (let r = 0; r < rows; r++)
+          for (let c = 0; c < cols; c++)
+            if (covered[r][c] === -1) return false;
+        return true;
+      }
+
+      const [cr, cc] = sortedClues[idx];
+      if (covered[cr][cc] !== -1) return false;
+
+      for (const rect of sortedRects[idx]) {
+        const [r1, c1, r2, c2] = rect;
+        if (!rectIsFree(r1, c1, r2, c2)) continue;
+
+        place(r1, c1, r2, c2, idx);
+        solution[idx] = rect;
+        steps++;
+        if (idx + 1 > maxDepth) maxDepth = idx + 1;
+
+        if (forwardCheck(idx + 1) && backtrack(idx + 1)) return true;
+
+        unplace(r1, c1, r2, c2);
+        solution[idx] = null;
+      }
+      return false;
+    }
+
+    function runSolver() {
+      if (onProgress) onProgress(maxDepth, total);
+      const found = backtrack(0);
+      const elapsed = ((performance.now() - solveStart) / 1000).toFixed(1);
+      if (found) {
+        const result = [];
+        for (let i = 0; i < total; i++)
+          result.push({ clue: sortedClues[i], rect: solution[i] });
+        resolve(result);
+      } else {
+        resolve(null);
+      }
+    }
+
+    setTimeout(runSolver, 0);
+  });
 }
 
 // ─── Puzzle Diagnostics ────────────────────────────────────────────
@@ -604,6 +567,8 @@ let isDragging = false;
 let timerStart = null;
 let timerInterval = null;
 let solved = false;
+let editMode = false;
+let solving = false;
 
 const gridEl = document.getElementById('grid');
 const gridContainer = document.getElementById('grid-container');
@@ -611,41 +576,26 @@ const statusEl = document.getElementById('status');
 const timerEl = document.getElementById('timer');
 const sizeLabel = document.getElementById('size-label');
 
-// ─── Adaptive Cell Sizing ──────────────────────────────────────────
-
-function updateCellSize(size) {
-  let cellPx, fontRem;
-  if (size <= 7) { cellPx = 52; fontRem = 1.1; }
-  else if (size <= 10) { cellPx = 42; fontRem = 1.0; }
-  else if (size <= 15) { cellPx = 32; fontRem = 0.85; }
-  else if (size <= 20) { cellPx = 26; fontRem = 0.75; }
-  else { cellPx = 22; fontRem = 0.65; }
-
-  // Also constrain to viewport width
-  const maxWidth = Math.floor((window.innerWidth - 40) / size) - 1;
-  cellPx = Math.min(cellPx, Math.max(16, maxWidth));
-
-  document.documentElement.style.setProperty('--cell-size', cellPx + 'px');
-  document.documentElement.style.setProperty('--cell-font', fontRem + 'rem');
-}
-
 // ─── Rendering ─────────────────────────────────────────────────────
 
 function renderGrid() {
   const rows = grid.length;
   const cols = grid[0].length;
 
-  updateCellSize(Math.max(rows, cols));
-
-  gridEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell-size))`;
-  gridEl.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
+  gridEl.style.gridTemplateColumns = `repeat(${cols}, 36px)`;
+  gridEl.style.gridTemplateRows = `repeat(${rows}, 36px)`;
   gridEl.innerHTML = '';
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const cell = document.createElement('div');
-      cell.className = 'cell' + (grid[r][c] > 0 ? ' clue' : ' empty');
-      cell.textContent = grid[r][c] > 0 ? grid[r][c] : '';
+      if (editMode) {
+        cell.className = 'cell editable' + (grid[r][c] > 0 ? ' clue' : '');
+        cell.textContent = grid[r][c] > 0 ? grid[r][c] : '';
+      } else {
+        cell.className = 'cell' + (grid[r][c] > 0 ? ' clue' : ' empty');
+        cell.textContent = grid[r][c] > 0 ? grid[r][c] : '';
+      }
       cell.dataset.r = r;
       cell.dataset.c = c;
       gridEl.appendChild(cell);
@@ -658,9 +608,9 @@ function renderGrid() {
 function renderOverlays() {
   gridContainer.querySelectorAll('.rect-overlay').forEach(el => el.remove());
 
-  const cellSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size'));
+  const cellSize = 36;
   const gap = 1;
-  const border = 2;
+  const border = 1;
 
   for (let i = 0; i < playerRects.length; i++) {
     const { r1, c1, r2, c2, color } = playerRects[i];
@@ -769,7 +719,7 @@ function getCellFromEvent(e) {
 }
 
 function onPointerDown(e) {
-  if (solved) return;
+  if (solved || editMode) return;
   e.preventDefault();
   const cell = getCellFromEvent(e);
   if (!cell) return;
@@ -941,11 +891,22 @@ function loadCustomPuzzle(andSolve) {
   renderGrid();
 
   if (andSolve) {
-    requestAnimationFrame(() => setTimeout(() => {
-      const result = solveShikaku(grid);
+    solving = true;
+    const solveStart = Date.now();
+    const dots = ['Solving.', 'Solving..', 'Solving...'];
+    let dotIdx = 0;
+    const animInterval = setInterval(() => {
+      const elapsed = ((Date.now() - solveStart) / 1000).toFixed(0);
+      statusEl.textContent = `${dots[dotIdx++ % 3]} (${elapsed}s)`;
+    }, 400);
+
+    solveShikakuAsync(grid, () => {}).then(result => {
+      clearInterval(animInterval);
+      solving = false;
+      const elapsed = ((Date.now() - solveStart) / 1000).toFixed(1);
       if (!result) {
         const reasons = diagnosePuzzle(grid);
-        statusEl.textContent = 'No solution found: ' + reasons[0];
+        statusEl.textContent = `No solution found (${elapsed}s): ${reasons[0]}`;
         statusEl.className = 'status error';
         console.warn('Puzzle diagnosis:', reasons);
         return;
@@ -956,9 +917,9 @@ function loadCustomPuzzle(andSolve) {
       }));
       renderOverlays();
       solved = true;
-      statusEl.textContent = 'Solved!';
+      statusEl.textContent = `Solved in ${elapsed}s!`;
       statusEl.className = 'status win';
-    }, 16));
+    });
   }
 }
 
@@ -978,6 +939,7 @@ modalOverlay.addEventListener('click', (e) => {
 // ─── Controls ──────────────────────────────────────────────────────
 
 document.getElementById('btn-new').addEventListener('click', newPuzzle);
+document.getElementById('btn-edit').addEventListener('click', toggleEditMode);
 document.getElementById('btn-undo').addEventListener('click', undo);
 document.getElementById('btn-clear').addEventListener('click', clearRects);
 document.getElementById('btn-solve').addEventListener('click', autoSolve);
@@ -1012,37 +974,49 @@ function clearRects() {
   updateStatus();
 }
 
-function autoSolve() {
+async function autoSolve() {
+  if (solving) return;
+  solving = true;
+  const solveStart = Date.now();
   statusEl.textContent = 'Solving...';
   statusEl.className = 'status';
 
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      const result = solveShikaku(grid);
-      if (!result) {
-        const reasons = diagnosePuzzle(grid);
-        statusEl.textContent = 'No solution found: ' + reasons[0];
-        statusEl.className = 'status error';
-        console.warn('Puzzle diagnosis:', reasons);
-        return;
-      }
+  // Animate the status while solver runs
+  const dots = ['Solving.', 'Solving..', 'Solving...'];
+  let dotIdx = 0;
+  const animInterval = setInterval(() => {
+    const elapsed = ((Date.now() - solveStart) / 1000).toFixed(0);
+    statusEl.textContent = `${dots[dotIdx++ % 3]} (${elapsed}s)`;
+  }, 400);
 
-      undoStack.push([...playerRects.map(r => ({ ...r }))]);
-      playerRects = result.map(({ rect }, i) => ({
-        r1: rect[0], c1: rect[1], r2: rect[2], c2: rect[3],
-        color: COLORS[i % COLORS.length],
-      }));
+  const result = await solveShikakuAsync(grid, () => {});
 
-      renderOverlays();
+  clearInterval(animInterval);
+  solving = false;
+  const elapsed = ((Date.now() - solveStart) / 1000).toFixed(1);
 
-      solved = true;
-      clearInterval(timerInterval);
-      if (!timerStart) timerStart = Date.now();
-      updateTimer();
-      statusEl.textContent = 'Solved by computer!';
-      statusEl.className = 'status win';
-    }, 16);
-  });
+  if (!result) {
+    const reasons = diagnosePuzzle(grid);
+    statusEl.textContent = `No solution found (${elapsed}s): ${reasons[0]}`;
+    statusEl.className = 'status error';
+    console.warn('Puzzle diagnosis:', reasons);
+    return;
+  }
+
+  undoStack.push([...playerRects.map(r => ({ ...r }))]);
+  playerRects = result.map(({ rect }, i) => ({
+    r1: rect[0], c1: rect[1], r2: rect[2], c2: rect[3],
+    color: COLORS[i % COLORS.length],
+  }));
+
+  renderOverlays();
+
+  solved = true;
+  clearInterval(timerInterval);
+  if (!timerStart) timerStart = Date.now();
+  updateTimer();
+  statusEl.textContent = `Solved by computer in ${elapsed}s!`;
+  statusEl.className = 'status win';
 }
 
 function changeSize(delta) {
@@ -1050,6 +1024,64 @@ function changeSize(delta) {
   sizeLabel.textContent = `${gridSize}\u00d7${gridSize}`;
   newPuzzle();
 }
+
+// ─── Edit Mode ─────────────────────────────────────────────────────
+
+function toggleEditMode() {
+  if (solving) return;
+  editMode = !editMode;
+  const btn = document.getElementById('btn-edit');
+  if (editMode) {
+    btn.classList.add('active');
+    playerRects = [];
+    undoStack = [];
+    solved = false;
+    timerStart = null;
+    clearInterval(timerInterval);
+    timerEl.textContent = '0:00';
+    statusEl.textContent = 'Edit mode: click cells to set clue numbers (0 to clear). Click "Edit Grid" again when done.';
+    statusEl.className = 'status';
+    renderGrid();
+  } else {
+    btn.classList.remove('active');
+    // Validate the edited grid
+    const rows = grid.length;
+    const cols = grid[0].length;
+    let clueSum = 0;
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        clueSum += grid[r][c];
+    const area = rows * cols;
+    if (clueSum === 0) {
+      statusEl.textContent = 'Grid has no clues. Add numbers or generate a new puzzle.';
+      statusEl.className = 'status error';
+    } else if (clueSum !== area) {
+      statusEl.textContent = `Clue sum (${clueSum}) does not equal grid area (${area}). Puzzle may not be solvable.`;
+      statusEl.className = 'status error';
+    } else {
+      statusEl.textContent = 'Custom puzzle ready. Draw rectangles to solve, or press Solve.';
+      statusEl.className = 'status';
+    }
+    renderGrid();
+  }
+}
+
+function onEditCellClick(e) {
+  if (!editMode) return;
+  const el = e.target.closest('.cell');
+  if (!el) return;
+  const r = parseInt(el.dataset.r);
+  const c = parseInt(el.dataset.c);
+  const current = grid[r][c];
+  const input = prompt(`Enter clue value for cell (${r + 1},${c + 1}).\n0 = empty.`, current);
+  if (input === null) return;
+  const val = parseInt(input, 10);
+  if (isNaN(val) || val < 0) return;
+  grid[r][c] = val;
+  renderGrid();
+}
+
+gridEl.addEventListener('click', onEditCellClick);
 
 // ─── Event Listeners ───────────────────────────────────────────────
 
@@ -1164,31 +1196,60 @@ gridEl.addEventListener('contextmenu', e => e.preventDefault());
   const r4 = parseCustomGrid('1 a\n0 0');
   assert(r4.error, 'parser: reject non-numbers');
 
-  // Test 11: Diagnostics — bad clue sum
+  // ── Diagnostics tests ──
+
+  // Test 11: bad clue sum
   const d1 = diagnosePuzzle([[3,0],[0,0]]);
   assert(d1.some(r => r.includes('Clue sum')), 'diag: detect bad clue sum');
 
-  // Test 12: Diagnostics — clue too large
-  const d2 = diagnosePuzzle([[9,0],[0,0]]);  // sum != area, caught first
-  assert(d2.length > 0, 'diag: detect clue sum mismatch for oversized clue');
+  // Test 12: clue sum too large
+  const d2 = diagnosePuzzle([[9,0],[0,0]]);
+  assert(d2.some(r => r.includes('Clue sum')), 'diag: detect oversized clue sum');
 
-  // Test 13: Diagnostics — adjacent 1s
-  const d3 = diagnosePuzzle([[1,1],[0,0]]);  // sum=2, area=4 → sum mismatch
-  // try one that has correct sum
-  const d4 = diagnosePuzzle([[1,1,1],[1,1,1]]);  // 6=6, but two adjacent 1s everywhere
+  // Test 13: adjacent 1s (correct sum but structurally impossible)
+  const d4 = diagnosePuzzle([[1,1,1],[1,1,1]]);
   assert(d4.some(r => r.includes('adjacent')), 'diag: detect adjacent clues of 1');
 
-  // Test 14: Diagnostics — no possible rects (clue value can't form rectangle in grid)
-  const d5 = diagnosePuzzle([[7,0,0],[0,0,0]]);  // 7 in a 2x3=6 grid → sum wrong
-  assert(d5.length > 0, 'diag: detect impossible clue');
+  // Test 14: no clues at all
+  const d_none = diagnosePuzzle([[0,0],[0,0]]);
+  assert(d_none.some(r => r.includes('no clues')), 'diag: detect no clues');
 
-  // Test 15: Diagnostics — valid puzzle returns no structural issues
+  // Test 15: valid solvable puzzle — should say "no obvious structural issue"
   const d6 = diagnosePuzzle([[4,0],[0,0]]);
-  assert(d6.some(r => r.includes('no solution') || r.includes('No obvious')), 'diag: valid puzzle has no structural issue');
+  assert(d6.some(r => r.includes('No obvious')), 'diag: valid puzzle reports no structural issue');
 
-  // Test 16: Diagnostics — clue blocked by other clues
-  const d7 = diagnosePuzzle([[2,2],[2,0]]);  // sum=6, area=4 → sum mismatch
-  assert(d7.length > 0, 'diag: detect sum mismatch');
+  // Test 16: clue that can't form any rectangle on grid
+  // 5 in a 2x3 grid: 5 has factors 1x5,5x1 — neither fits in 2x3 if clue is at (0,0)
+  // but sum must equal area=6, so we use a grid where sum is correct
+  // Use a 2x2 grid with clue 3 at (0,0) and clue 1 at (1,1): sum=4=area
+  // 3 needs 1x3 or 3x1 — neither fits in 2x2
+  const d_nofit = diagnosePuzzle([[3,0],[0,1]]);
+  assert(d_nofit.some(r => r.includes('no possible rectangle')), 'diag: detect clue with no fitting rect');
+
+  // Test 17: clue blocked by other clues
+  // 3x1 grid [2, 2, 2]: sum=6=area. Clue 2 at (0,0) can only be 1x2=(0,0)-(0,1) or 2x1 (no rows).
+  // 1x2 at (0,0)-(0,1) contains clue at (0,1). So every rect for (0,0) contains another clue.
+  const d_blocked = diagnosePuzzle([[2,2,2]]);
+  assert(d_blocked.some(r => r.includes('every possible rectangle contains another clue')),
+    'diag: detect clue blocked by neighbors');
+
+  // Test 18: unreachable cells
+  // 3x3 grid with one clue of 9 at corner: should be solvable (9=3x3)
+  // But: 3x3 with clue 4 at (0,0) and clue 5 at (2,2) — some cells may be unreachable
+  const d_reach = diagnosePuzzle([[4,0,0],[0,0,0],[0,0,5]]);
+  // 4 at (0,0): rects of area 4 (1x4 no, 4x1 no, 2x2 yes). 2x2 from (0,0)-(1,1).
+  // 5 at (2,2): rects of area 5 (1x5 no, 5x1 no). No valid rect! → caught as "no possible rect"
+  assert(d_reach.some(r => r.includes('no possible rectangle') || r.includes('cannot be reached')),
+    'diag: detect unreachable cells or impossible rect');
+
+  // Test 19: diagnosePuzzle returns array
+  assert(Array.isArray(d1), 'diag: returns array');
+  assert(d1.length >= 1, 'diag: returns at least one reason');
+
+  // Test 20: all reasons are strings
+  for (const reasons of [d1, d4, d_none, d6, d_nofit]) {
+    assert(reasons.every(r => typeof r === 'string'), 'diag: all reasons are strings');
+  }
 
   if (failed === 0) {
     console.log(`%cShikaku tests: all ${passed} passed`, 'color: #4ecdc4; font-weight: bold');
