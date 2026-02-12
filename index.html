@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shikakukata — Shikaku Puzzle</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --border: #0f3460;
+    --text: #e0e0e0;
+    --text-dim: #8888aa;
+    --accent: #e94560;
+    --accent2: #0f3460;
+    --cell-size: 52px;
+    --grid-gap: 1px;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+    user-select: none;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+    font-weight: 300;
+    letter-spacing: 0.15em;
+    margin-bottom: 4px;
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  button {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  button:hover { background: var(--border); }
+  button:active { transform: scale(0.97); }
+  button.active { border-color: var(--accent); color: var(--accent); }
+
+  .size-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .size-controls span {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    min-width: 30px;
+    text-align: center;
+  }
+
+  .status {
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+    min-height: 1.4em;
+    color: var(--text-dim);
+  }
+
+  .status.win { color: #4ecdc4; font-weight: 600; }
+  .status.error { color: var(--accent); }
+
+  #grid-container {
+    position: relative;
+    margin-bottom: 20px;
+  }
+
+  #grid {
+    display: grid;
+    background: #0a0a1a;
+    gap: var(--grid-gap);
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    position: relative;
+    cursor: crosshair;
+    transition: background 0.1s;
+  }
+
+  .cell.clue { color: #fff; }
+  .cell.empty { color: transparent; }
+
+  /* Selection highlight */
+  .cell.selecting {
+    background: rgba(233, 69, 96, 0.25);
+  }
+
+  /* Rectangle overlays */
+  .rect-overlay {
+    position: absolute;
+    border: 2.5px solid;
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.2s;
+  }
+
+  .rect-overlay.invalid {
+    background: rgba(233, 69, 96, 0.1);
+    border-style: dashed;
+  }
+
+  .instructions {
+    max-width: 480px;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-top: 8px;
+  }
+
+  .instructions strong { color: var(--text); }
+
+  .timer {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 500px) {
+    :root { --cell-size: 40px; }
+    h1 { font-size: 1.4rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>SHIKAKUKATA</h1>
+<p class="subtitle">Shikaku Puzzle Game</p>
+
+<div class="controls">
+  <div class="size-controls">
+    <button id="btn-smaller">−</button>
+    <span id="size-label">5×5</span>
+    <button id="btn-larger">+</button>
+  </div>
+  <button id="btn-new">New Puzzle</button>
+  <button id="btn-undo">Undo</button>
+  <button id="btn-clear">Clear</button>
+  <button id="btn-solve">Solve</button>
+</div>
+
+<div class="timer" id="timer">0:00</div>
+<div class="status" id="status">Drag to draw rectangles. Each must contain exactly one number equal to its area.</div>
+
+<div id="grid-container">
+  <div id="grid"></div>
+</div>
+
+<div class="instructions">
+  <strong>How to play:</strong> Click and drag to draw a rectangle.
+  Each rectangle must contain exactly <strong>one number</strong>,
+  and that number must equal the rectangle's <strong>area</strong>.
+  Cover every cell to win.
+</div>
+
+<script>
+// ─── Shikaku Solver (ported from Python) ───────────────────────────
+
+function solveShikaku(grid) {
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const totalArea = rows * cols;
+
+  const clues = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (grid[r][c] > 0) clues.push([r, c, grid[r][c]]);
+
+  const clueSum = clues.reduce((s, cl) => s + cl[2], 0);
+  if (clueSum !== totalArea) return null;
+
+  const covered = Array.from({ length: rows }, () => new Int8Array(cols).fill(-1));
+
+  function getRectangles(cr, cc, area) {
+    const rects = [];
+    for (let h = 1; h <= area; h++) {
+      if (area % h !== 0) continue;
+      const w = area / h;
+      for (let r1 = cr - h + 1; r1 <= cr; r1++) {
+        for (let c1 = cc - w + 1; c1 <= cc; c1++) {
+          const r2 = r1 + h - 1;
+          const c2 = c1 + w - 1;
+          if (r1 >= 0 && r2 < rows && c1 >= 0 && c2 < cols)
+            rects.push([r1, c1, r2, c2]);
+        }
+      }
+    }
+    return rects;
+  }
+
+  const allRects = clues.map(([cr, cc, val]) => getRectangles(cr, cc, val));
+
+  // MRV: sort by fewest rectangles
+  const order = [...Array(clues.length).keys()].sort((a, b) => allRects[a].length - allRects[b].length);
+  const sortedClues = order.map(i => clues[i]);
+  const sortedRects = order.map(i => allRects[i]);
+
+  function rectIsFree(r1, c1, r2, c2) {
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        if (covered[r][c] !== -1) return false;
+    return true;
+  }
+
+  function hasOtherClue(r1, c1, r2, c2, idx) {
+    for (let i = 0; i < sortedClues.length; i++) {
+      if (i === idx) continue;
+      const [cr, cc] = sortedClues[i];
+      if (cr >= r1 && cr <= r2 && cc >= c1 && cc <= c2) return true;
+    }
+    return false;
+  }
+
+  function place(r1, c1, r2, c2, idx) {
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        covered[r][c] = idx;
+  }
+
+  function unplace(r1, c1, r2, c2) {
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        covered[r][c] = -1;
+  }
+
+  const solution = new Array(sortedClues.length).fill(null);
+
+  function backtrack(idx) {
+    if (idx === sortedClues.length) {
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (covered[r][c] === -1) return false;
+      return true;
+    }
+
+    const [cr, cc] = sortedClues[idx];
+    if (covered[cr][cc] !== -1) return false;
+
+    for (const rect of sortedRects[idx]) {
+      const [r1, c1, r2, c2] = rect;
+      if (rectIsFree(r1, c1, r2, c2) && !hasOtherClue(r1, c1, r2, c2, idx)) {
+        place(r1, c1, r2, c2, idx);
+        solution[idx] = rect;
+        if (backtrack(idx + 1)) return true;
+        unplace(r1, c1, r2, c2);
+        solution[idx] = null;
+      }
+    }
+    return false;
+  }
+
+  if (backtrack(0)) {
+    // Map solution back to original clue order
+    const result = [];
+    for (let i = 0; i < sortedClues.length; i++) {
+      result.push({ clue: sortedClues[i], rect: solution[i] });
+    }
+    return result;
+  }
+  return null;
+}
+
+// ─── Puzzle Generator ──────────────────────────────────────────────
+
+function generatePuzzle(rows, cols) {
+  // Generate a random partition of the grid into rectangles, then place clues
+  const grid = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  const used = Array.from({ length: rows }, () => new Uint8Array(cols));
+
+  const rects = [];
+
+  // Randomly partition the grid
+  function findFirstEmpty() {
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (!used[r][c]) return [r, c];
+    return null;
+  }
+
+  function canPlace(r1, c1, r2, c2) {
+    if (r2 >= rows || c2 >= cols) return false;
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        if (used[r][c]) return false;
+    return true;
+  }
+
+  function markUsed(r1, c1, r2, c2) {
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        used[r][c] = 1;
+  }
+
+  while (true) {
+    const cell = findFirstEmpty();
+    if (!cell) break;
+    const [r, c] = cell;
+
+    // Try random rectangle sizes
+    const maxArea = Math.min(rows * cols - rects.reduce((s, rc) => s + (rc[2] - rc[0] + 1) * (rc[3] - rc[1] + 1), 0), rows * cols);
+    const candidates = [];
+
+    for (let h = 1; h <= Math.min(rows - r, 6); h++) {
+      for (let w = 1; w <= Math.min(cols - c, 6); w++) {
+        const area = h * w;
+        if (area > 0 && area <= Math.min(maxArea, rows + cols) && canPlace(r, c, r + h - 1, c + w - 1)) {
+          candidates.push([r, c, r + h - 1, c + w - 1]);
+        }
+      }
+    }
+
+    if (candidates.length === 0) {
+      // Fallback: single cell
+      if (!used[r][c]) {
+        used[r][c] = 1;
+        rects.push([r, c, r, c]);
+      }
+      continue;
+    }
+
+    // Prefer medium-sized rectangles for more interesting puzzles
+    candidates.sort(() => Math.random() - 0.5);
+    // Bias toward areas 2-6 for more interesting puzzles
+    const weighted = candidates.filter(([r1, c1, r2, c2]) => {
+      const a = (r2 - r1 + 1) * (c2 - c1 + 1);
+      return a >= 2 && a <= Math.max(6, Math.floor(rows * cols / 4));
+    });
+
+    const chosen = (weighted.length > 0 ? weighted : candidates)[0];
+    markUsed(...chosen);
+    rects.push(chosen);
+  }
+
+  // Place clue numbers: one random cell per rectangle gets the area value
+  for (const [r1, c1, r2, c2] of rects) {
+    const area = (r2 - r1 + 1) * (c2 - c1 + 1);
+    const cells = [];
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        cells.push([r, c]);
+    const [cr, cc] = cells[Math.floor(Math.random() * cells.length)];
+    grid[cr][cc] = area;
+  }
+
+  return grid;
+}
+
+// ─── Game State ────────────────────────────────────────────────────
+
+const COLORS = [
+  '#e94560', '#4ecdc4', '#f7dc6f', '#a29bfe', '#fd79a8',
+  '#00b894', '#6c5ce7', '#fdcb6e', '#e17055', '#74b9ff',
+  '#55efc4', '#fab1a0', '#81ecec', '#dfe6e9', '#b2bec3',
+  '#636e72', '#d63031', '#0984e3', '#e84393', '#00cec9',
+  '#2d3436', '#ffeaa7', '#ff7675', '#a4b0be', '#f5cd79',
+];
+
+let gridSize = 5;
+let grid = [];
+let playerRects = []; // [{r1,c1,r2,c2,color}]
+let undoStack = [];
+let dragStart = null;
+let dragEnd = null;
+let isDragging = false;
+let timerStart = null;
+let timerInterval = null;
+let solved = false;
+
+const gridEl = document.getElementById('grid');
+const gridContainer = document.getElementById('grid-container');
+const statusEl = document.getElementById('status');
+const timerEl = document.getElementById('timer');
+const sizeLabel = document.getElementById('size-label');
+
+// ─── Rendering ─────────────────────────────────────────────────────
+
+function renderGrid() {
+  const rows = grid.length;
+  const cols = grid[0].length;
+
+  gridEl.style.gridTemplateColumns = `repeat(${cols}, var(--cell-size))`;
+  gridEl.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
+  gridEl.innerHTML = '';
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (grid[r][c] > 0 ? ' clue' : ' empty');
+      cell.textContent = grid[r][c] > 0 ? grid[r][c] : '';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      gridEl.appendChild(cell);
+    }
+  }
+
+  renderOverlays();
+}
+
+function renderOverlays() {
+  // Remove old overlays
+  gridContainer.querySelectorAll('.rect-overlay').forEach(el => el.remove());
+
+  const cellSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size'));
+  const gap = 1; // grid gap
+  const border = 2; // grid border
+
+  for (let i = 0; i < playerRects.length; i++) {
+    const { r1, c1, r2, c2, color } = playerRects[i];
+    const overlay = document.createElement('div');
+    overlay.className = 'rect-overlay';
+
+    const x = border + c1 * (cellSize + gap);
+    const y = border + r1 * (cellSize + gap);
+    const w = (c2 - c1 + 1) * (cellSize + gap) - gap;
+    const h = (r2 - r1 + 1) * (cellSize + gap) - gap;
+
+    overlay.style.left = x + 'px';
+    overlay.style.top = y + 'px';
+    overlay.style.width = w + 'px';
+    overlay.style.height = h + 'px';
+    overlay.style.borderColor = color;
+    overlay.style.background = color + '18';
+
+    // Check validity
+    const valid = isRectValid(r1, c1, r2, c2, i);
+    if (!valid) overlay.classList.add('invalid');
+
+    gridContainer.appendChild(overlay);
+  }
+}
+
+function isRectValid(r1, c1, r2, c2, selfIdx) {
+  const area = (r2 - r1 + 1) * (c2 - c1 + 1);
+  let clueCount = 0;
+  let clueVal = 0;
+
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      if (grid[r][c] > 0) {
+        clueCount++;
+        clueVal = grid[r][c];
+      }
+    }
+  }
+
+  // Must contain exactly one clue, and area must match
+  if (clueCount !== 1 || clueVal !== area) return false;
+
+  // Check overlap with other rectangles
+  for (let i = 0; i < playerRects.length; i++) {
+    if (i === selfIdx) continue;
+    const o = playerRects[i];
+    if (r1 <= o.r2 && r2 >= o.r1 && c1 <= o.c2 && c2 >= o.c1) return false;
+  }
+
+  return true;
+}
+
+function updateSelectionHighlight() {
+  const cells = gridEl.querySelectorAll('.cell');
+  cells.forEach(cell => cell.classList.remove('selecting'));
+
+  if (!isDragging || !dragStart || !dragEnd) return;
+
+  const r1 = Math.min(dragStart.r, dragEnd.r);
+  const r2 = Math.max(dragStart.r, dragEnd.r);
+  const c1 = Math.min(dragStart.c, dragEnd.c);
+  const c2 = Math.max(dragStart.c, dragEnd.c);
+
+  cells.forEach(cell => {
+    const r = parseInt(cell.dataset.r);
+    const c = parseInt(cell.dataset.c);
+    if (r >= r1 && r <= r2 && c >= c1 && c <= c2) {
+      cell.classList.add('selecting');
+    }
+  });
+}
+
+function checkWin() {
+  if (solved) return;
+
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const covered = Array.from({ length: rows }, () => new Uint8Array(cols));
+
+  // All rects must be valid and cover everything
+  for (let i = 0; i < playerRects.length; i++) {
+    const { r1, c1, r2, c2 } = playerRects[i];
+    if (!isRectValid(r1, c1, r2, c2, i)) return;
+
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        covered[r][c] = 1;
+  }
+
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (!covered[r][c]) return;
+
+  // Win!
+  solved = true;
+  clearInterval(timerInterval);
+  statusEl.textContent = 'Solved! Well done!';
+  statusEl.className = 'status win';
+}
+
+// ─── Input Handling ────────────────────────────────────────────────
+
+function getCellFromEvent(e) {
+  const touch = e.touches ? e.touches[0] : e;
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  if (el && el.classList.contains('cell')) {
+    return { r: parseInt(el.dataset.r), c: parseInt(el.dataset.c) };
+  }
+  return null;
+}
+
+function onPointerDown(e) {
+  if (solved) return;
+  e.preventDefault();
+  const cell = getCellFromEvent(e);
+  if (!cell) return;
+
+  // If clicking on an existing rect, remove it
+  for (let i = playerRects.length - 1; i >= 0; i--) {
+    const { r1, c1, r2, c2 } = playerRects[i];
+    if (cell.r >= r1 && cell.r <= r2 && cell.c >= c1 && cell.c <= c2) {
+      // Check if this is just a click (not a drag) - we'll handle removal on pointerup
+      // For now start dragging
+      break;
+    }
+  }
+
+  isDragging = true;
+  dragStart = cell;
+  dragEnd = cell;
+
+  if (!timerStart) {
+    timerStart = Date.now();
+    timerInterval = setInterval(updateTimer, 1000);
+  }
+
+  updateSelectionHighlight();
+}
+
+function onPointerMove(e) {
+  if (!isDragging) return;
+  e.preventDefault();
+  const cell = getCellFromEvent(e);
+  if (cell) {
+    dragEnd = cell;
+    updateSelectionHighlight();
+  }
+}
+
+function onPointerUp(e) {
+  if (!isDragging) return;
+  isDragging = false;
+
+  if (!dragStart || !dragEnd) {
+    updateSelectionHighlight();
+    return;
+  }
+
+  const r1 = Math.min(dragStart.r, dragEnd.r);
+  const r2 = Math.max(dragStart.r, dragEnd.r);
+  const c1 = Math.min(dragStart.c, dragEnd.c);
+  const c2 = Math.max(dragStart.c, dragEnd.c);
+
+  // Single cell click: remove any rect covering that cell
+  if (r1 === r2 && c1 === c2) {
+    for (let i = playerRects.length - 1; i >= 0; i--) {
+      const o = playerRects[i];
+      if (r1 >= o.r1 && r1 <= o.r2 && c1 >= o.c1 && c1 <= o.c2) {
+        undoStack.push([...playerRects]);
+        playerRects.splice(i, 1);
+        renderOverlays();
+        updateStatus();
+        updateSelectionHighlight();
+        return;
+      }
+    }
+    updateSelectionHighlight();
+    return;
+  }
+
+  // Remove any overlapping rects
+  undoStack.push([...playerRects.map(r => ({ ...r }))]);
+  playerRects = playerRects.filter(o => {
+    return !(r1 <= o.r2 && r2 >= o.r1 && c1 <= o.c2 && c2 >= o.c1);
+  });
+
+  const color = COLORS[playerRects.length % COLORS.length];
+  playerRects.push({ r1, c1, r2, c2, color });
+
+  renderOverlays();
+  updateSelectionHighlight();
+  updateStatus();
+  checkWin();
+}
+
+function updateStatus() {
+  if (solved) return;
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const totalCells = rows * cols;
+
+  let coveredCount = 0;
+  const covered = Array.from({ length: rows }, () => new Uint8Array(cols));
+  for (const { r1, c1, r2, c2 } of playerRects) {
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        if (!covered[r][c]) { covered[r][c] = 1; coveredCount++; }
+  }
+
+  const invalidCount = playerRects.filter((_, i) => !isRectValid(playerRects[i].r1, playerRects[i].c1, playerRects[i].r2, playerRects[i].c2, i)).length;
+
+  if (playerRects.length === 0) {
+    statusEl.textContent = 'Drag to draw rectangles. Each must contain exactly one number equal to its area.';
+    statusEl.className = 'status';
+  } else if (invalidCount > 0) {
+    statusEl.textContent = `${playerRects.length} rectangles drawn, ${invalidCount} invalid. ${coveredCount}/${totalCells} cells covered.`;
+    statusEl.className = 'status error';
+  } else {
+    statusEl.textContent = `${playerRects.length} rectangles drawn. ${coveredCount}/${totalCells} cells covered.`;
+    statusEl.className = 'status';
+  }
+}
+
+function updateTimer() {
+  if (!timerStart) { timerEl.textContent = '0:00'; return; }
+  const elapsed = Math.floor((Date.now() - timerStart) / 1000);
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ─── Controls ──────────────────────────────────────────────────────
+
+document.getElementById('btn-new').addEventListener('click', newPuzzle);
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-clear').addEventListener('click', clearRects);
+document.getElementById('btn-solve').addEventListener('click', autoSolve);
+document.getElementById('btn-smaller').addEventListener('click', () => changeSize(-1));
+document.getElementById('btn-larger').addEventListener('click', () => changeSize(1));
+
+function newPuzzle() {
+  grid = generatePuzzle(gridSize, gridSize);
+  playerRects = [];
+  undoStack = [];
+  solved = false;
+  timerStart = null;
+  clearInterval(timerInterval);
+  timerEl.textContent = '0:00';
+  statusEl.textContent = 'Drag to draw rectangles. Each must contain exactly one number equal to its area.';
+  statusEl.className = 'status';
+  renderGrid();
+}
+
+function undo() {
+  if (undoStack.length === 0 || solved) return;
+  playerRects = undoStack.pop();
+  renderOverlays();
+  updateStatus();
+}
+
+function clearRects() {
+  if (playerRects.length === 0 || solved) return;
+  undoStack.push([...playerRects.map(r => ({ ...r }))]);
+  playerRects = [];
+  renderOverlays();
+  updateStatus();
+}
+
+function autoSolve() {
+  statusEl.textContent = 'Solving...';
+  statusEl.className = 'status';
+
+  // Use requestAnimationFrame so the status updates visually
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      const result = solveShikaku(grid);
+      if (!result) {
+        statusEl.textContent = 'No solution found for this puzzle.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      undoStack.push([...playerRects.map(r => ({ ...r }))]);
+      playerRects = result.map(({ rect }, i) => ({
+        r1: rect[0], c1: rect[1], r2: rect[2], c2: rect[3],
+        color: COLORS[i % COLORS.length],
+      }));
+
+      renderOverlays();
+
+      solved = true;
+      clearInterval(timerInterval);
+      if (!timerStart) timerStart = Date.now();
+      updateTimer();
+      statusEl.textContent = 'Solved by computer!';
+      statusEl.className = 'status win';
+    }, 16);
+  });
+}
+
+function changeSize(delta) {
+  gridSize = Math.max(3, Math.min(10, gridSize + delta));
+  sizeLabel.textContent = `${gridSize}×${gridSize}`;
+  newPuzzle();
+}
+
+// ─── Event Listeners ───────────────────────────────────────────────
+
+gridEl.addEventListener('mousedown', onPointerDown);
+document.addEventListener('mousemove', onPointerMove);
+document.addEventListener('mouseup', onPointerUp);
+gridEl.addEventListener('touchstart', onPointerDown, { passive: false });
+document.addEventListener('touchmove', onPointerMove, { passive: false });
+document.addEventListener('touchend', onPointerUp);
+
+// Prevent context menu on long press
+gridEl.addEventListener('contextmenu', e => e.preventDefault());
+
+// ─── Init ──────────────────────────────────────────────────────────
+
+newPuzzle();
+
+</script>
+</body>
+</html>
