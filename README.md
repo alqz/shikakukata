@@ -1,71 +1,63 @@
 # Shikakukata — Shikaku Puzzle Solver & Game
 
-A [Shikaku](https://en.wikipedia.org/wiki/Shikaku) puzzle solver and interactive game.
+A [Shikaku](https://en.wikipedia.org/wiki/Shikaku) puzzle solver and interactive game. No build step, no dependencies — open `index.html` directly or serve via GitHub Pages.
 
 ## Project Structure
 
 | File | Purpose |
 |------|---------|
-| `index.html` | Game UI — grid rendering, input handling, controls |
-| `solver.js` | Solver engine — backtracking solver, puzzle generator, diagnostics, parser |
-| `style.css` | All styles, with `--cell-size` CSS custom property |
-| `algorithm.html` | Explanation of how the solver algorithm works |
-| `shikaku_solver.py` | Command-line solver in Python (standalone) |
-
-The browser game is fully static — no build step, no dependencies. Open `index.html` directly or serve via GitHub Pages.
+| `index.html` | Game UI — grid, input handling, controls, self-tests |
+| `solver.js` | Solver engine — backtracking solver, generator, diagnostics, parser |
+| `style.css` | All styles (`--cell-size` CSS custom property) |
+| `algorithm.html` | How the solver algorithm works |
+| `shikaku_solver.py` | Standalone command-line solver in Python |
 
 ## Running Tests
 
-Self-tests run automatically on page load and output to the browser console. Open `index.html` in a browser and check the console for:
+220 self-tests run on page load and output to the browser console:
 
 ```
-Shikaku tests: all N passed
+Shikaku tests: all 220 passed
 ```
 
-To run tests headlessly via Deno:
+Headless via Deno:
 
 ```sh
 cat solver.js > /tmp/test.js
-# append test code (extract from the <script> block in index.html)
-deno run --allow-read /tmp/test.js
+sed -n '/^\/\/ ─── Self-Tests/,/^})();$/p' index.html >> /tmp/test.js
+deno run /tmp/test.js
 ```
 
-The test suite covers:
-- Solving known 5x5, 6x6, 7x7 puzzles with solution validation
-- Edge cases: 1x1, 2x2, bad clue sums, unsolvable grids
-- Generator: correct dimensions and clue sums for sizes 3–15
-- Generated puzzles are solvable (sizes 3–7, multiple trials each)
-- Custom puzzle parser: valid input, uneven rows, empty input, non-numbers, trailing separators
-- Diagnostics: bad clue sum, no clues, blocked clues, unreachable cells, impossible rectangles
+Coverage: solving (5x5–7x7 with validation), edge cases (1x1, 2x2, non-square grids, all-1s, single-clue, multi-solution, unsolvable), generator (dimensions, clue sums, solvability for sizes 3–15), no-1s generator (no 1-clues, solvability), `getRectangles` correctness, custom parser (valid/invalid inputs, trailing separators), diagnostics (bad sums, no clues, blocked clues, unreachable cells, impossible rects).
 
 ## Dev Notes
 
 ### Architecture
 
-The game is split into three files for separation of concerns:
+- **`solver.js`** — pure logic, no DOM. Exports: `solveShikaku`, `solveShikakuAsync`, `generatePuzzle`, `diagnosePuzzle`, `parseCustomGrid`, `getRectangles`, `shuffle`.
+- **`index.html`** — DOM interaction, event listeners, game state. Loads `solver.js` via `<script>`.
+- **`style.css`** — `--cell-size` custom property read by JS for overlay positioning.
 
-- **`solver.js`** contains all pure logic (no DOM access). Functions: `solveShikaku`, `solveShikakuAsync`, `generatePuzzle`, `diagnosePuzzle`, `parseCustomGrid`, `getRectangles`, `shuffle`.
-- **`index.html`** handles all DOM interaction, event listeners, and game state. It loads `solver.js` via a `<script>` tag.
-- **`style.css`** defines all styles. The `--cell-size` custom property is read by JS to compute overlay positions, keeping the magic number in one place.
+### Solver
 
-### Solver Algorithm
+Constraint-satisfaction backtracking with:
 
-The solver uses constraint-satisfaction backtracking with these optimizations:
+1. **Pre-filtering** — rectangles containing other clues removed upfront
+2. **Dynamic MRV** — most constrained clue (fewest valid rects) chosen at each step
+3. **Forward checking** — verifies all unplaced clues still have valid options
+4. **Dead-cell detection** — prunes when uncovered cells become unreachable
 
-1. **Pre-filtering** — rectangles containing other clues are removed before search begins
-2. **Dynamic MRV** — at each step, the most constrained clue (fewest valid rectangles remaining) is chosen next
-3. **Forward checking** — after each placement, verifies all remaining clues still have valid options
-4. **Dead-cell detection** — prunes branches where uncovered cells become unreachable by any remaining clue
+The async solver uses an explicit stack and yields every 5,000 iterations via `setTimeout(0)`.
 
-The async solver (`solveShikakuAsync`) uses an explicit stack and yields to the event loop every 5,000 iterations so the UI stays responsive during long solves.
+Performance: 15x15 ~2ms, 25x25 ~10ms typical. See `algorithm.html` for details.
 
-Performance: 15x15 ~2ms, 25x25 ~10ms typical.
+### Generator
 
-See `algorithm.html` for a full explanation with diagrams.
+Greedy partitioning with randomized rectangle selection, preferring medium-sized rects. The **No 1s** mode (`minArea: 2`) uses an isolation check — before placing a rect, it verifies no neighboring cell would be left without an empty neighbor (which would force a 1x1). Falls back to retry (up to 20 attempts) on rare dead-ends. 25x25 no-1s generation takes ~1ms.
 
 ### Accessibility
 
-- `Escape` closes the modal and cancels edit input
-- `Ctrl/Cmd+Z` undoes the last rectangle action
-- ARIA attributes on modal (`role="dialog"`), grid (`role="grid"`), and icon-only buttons (`aria-label`)
-- Focus is managed: modal focuses its textarea on open, returns focus to the trigger button on close
+- `Escape` closes modal / cancels edit input
+- `Ctrl/Cmd+Z` undoes last rectangle action
+- ARIA: `role="dialog"` on modal, `role="grid"` on grid, `aria-label` on icon buttons
+- Focus managed: modal focuses textarea on open, returns focus on close
