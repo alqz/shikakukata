@@ -18,7 +18,7 @@
     <button id="btn-larger" aria-label="Increase grid size">+</button>
   </div>
   <button id="btn-new">New Puzzle</button>
-  <button id="btn-no1s" title="Generate puzzles with no 1-clues">No 1s</button>
+  <button id="btn-new-no1s" title="Generate puzzle with no 1-clues">New (No 1s)</button>
   <button id="btn-custom">Custom</button>
   <button id="btn-edit">Edit Grid</button>
   <button id="btn-undo">Undo</button>
@@ -41,6 +41,7 @@
   <strong>Features:</strong>
   Grids up to 25&times;25 &middot;
   Auto-solver &middot;
+  No-1s puzzles &middot;
   Paste your own puzzle via <strong>Custom</strong> &middot;
   Edit cells directly via <strong>Edit Grid</strong> &middot;
   Diagnostics for unsolvable puzzles<br>
@@ -97,7 +98,7 @@ let solving = false;
 let activeEditInput = null;
 let dragMoved = false;
 let nextColorIdx = 0;
-let noOnesMode = false;
+let hasClues = false;
 
 const gridEl = document.getElementById('grid');
 const gridContainer = document.getElementById('grid-container');
@@ -441,6 +442,7 @@ function loadCustomPuzzle(andSolve) {
   undoStack = [];
   nextColorIdx = 0;
   solved = false;
+  hasClues = true;
   timerStart = null;
   clearInterval(timerInterval);
   timerEl.textContent = '0:00';
@@ -491,12 +493,8 @@ modalOverlay.addEventListener('click', (e) => {
 
 // ─── Controls ──────────────────────────────────────────────────────
 
-document.getElementById('btn-new').addEventListener('click', newPuzzle);
-document.getElementById('btn-no1s').addEventListener('click', () => {
-  noOnesMode = !noOnesMode;
-  document.getElementById('btn-no1s').classList.toggle('active', noOnesMode);
-  newPuzzle();
-});
+document.getElementById('btn-new').addEventListener('click', () => newPuzzle());
+document.getElementById('btn-new-no1s').addEventListener('click', () => newPuzzle({ minArea: 2 }));
 document.getElementById('btn-edit').addEventListener('click', toggleEditMode);
 document.getElementById('btn-undo').addEventListener('click', undo);
 document.getElementById('btn-clear').addEventListener('click', clearRects);
@@ -507,17 +505,22 @@ document.getElementById('btn-larger').addEventListener('click', () => changeSize
 function updateButtons() {
   document.getElementById('btn-undo').disabled = undoStack.length === 0 || solved || solving;
   document.getElementById('btn-clear').disabled = playerRects.length === 0 || solved || solving;
-  document.getElementById('btn-solve').disabled = solving || solved;
+  document.getElementById('btn-solve').disabled = solving || solved || !hasClues;
+  document.getElementById('btn-new').disabled = solving;
+  document.getElementById('btn-new-no1s').disabled = solving;
+  document.getElementById('btn-custom').disabled = solving;
   document.getElementById('btn-edit').disabled = solving;
+  document.getElementById('btn-smaller').disabled = solving || gridSize <= 3;
+  document.getElementById('btn-larger').disabled = solving || gridSize >= 25;
 }
 
-function newPuzzle() {
-  const opts = noOnesMode ? { minArea: 2 } : undefined;
+function newPuzzle(opts) {
   grid = generatePuzzle(gridSize, gridSize, opts);
   playerRects = [];
   undoStack = [];
   nextColorIdx = 0;
   solved = false;
+  hasClues = true;
   timerStart = null;
   clearInterval(timerInterval);
   timerEl.textContent = '0:00';
@@ -591,7 +594,23 @@ async function autoSolve() {
 function changeSize(delta) {
   gridSize = Math.max(3, Math.min(25, gridSize + delta));
   sizeLabel.textContent = `${gridSize}\u00d7${gridSize}`;
-  newPuzzle();
+  resetGrid();
+}
+
+function resetGrid() {
+  grid = Array.from({ length: gridSize }, () => new Array(gridSize).fill(0));
+  playerRects = [];
+  undoStack = [];
+  nextColorIdx = 0;
+  solved = false;
+  hasClues = false;
+  timerStart = null;
+  clearInterval(timerInterval);
+  timerEl.textContent = '0:00';
+  statusEl.textContent = 'Choose a puzzle type to begin, or use Edit Grid to create your own.';
+  statusEl.className = 'status';
+  renderGrid();
+  updateButtons();
 }
 
 // ─── Edit Mode ─────────────────────────────────────────────────────
@@ -622,6 +641,7 @@ function toggleEditMode() {
       for (let c = 0; c < cols; c++)
         clueSum += grid[r][c];
     const area = rows * cols;
+    hasClues = clueSum > 0;
     if (clueSum === 0) {
       statusEl.textContent = 'Grid has no clues. Add numbers or generate a new puzzle.';
       statusEl.className = 'status error';

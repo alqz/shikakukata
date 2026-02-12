@@ -481,11 +481,11 @@ function diagnosePuzzle(grid) {
 function generatePuzzle(rows, cols, options) {
   const minArea = (options && options.minArea) || 1;
 
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 100; attempt++) {
     const result = generatePuzzleAttempt(rows, cols, minArea);
     if (result) return result;
   }
-  // Fallback: generate without constraint
+  // Fallback: generate without minArea constraint to guarantee a result
   return generatePuzzleAttempt(rows, cols, 1);
 }
 
